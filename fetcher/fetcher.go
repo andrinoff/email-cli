@@ -3,7 +3,6 @@ package fetcher
 import (
 	"crypto/tls"
 	"fmt"
-	"io"
 	"log"
 	"time"
 
@@ -34,23 +33,19 @@ func FetchEmails(cfg *config.Config) ([]Email, error) {
 		return nil, fmt.Errorf("unsupported service provider: %s", cfg.ServiceProvider)
 	}
 
-	// Set up client options
 	options := imapclient.Options{
 		TLSConfig: &tls.Config{ServerName: serverName},
 	}
-	// Dial the IMAP server
 	c, err := imapclient.DialTLS(imapHost, &options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial IMAP server: %w", err)
 	}
 	defer c.Close()
 
-	// Login
 	if err := c.Login(cfg.Email, cfg.Password).Wait(); err != nil {
 		return nil, fmt.Errorf("failed to login: %w", err)
 	}
 
-	// Select INBOX to get message count
 	selectData, err := c.Select("INBOX", nil).Wait()
 	if err != nil {
 		return nil, fmt.Errorf("failed to select INBOX: %w", err)
@@ -61,14 +56,12 @@ func FetchEmails(cfg *config.Config) ([]Email, error) {
 		return []Email{}, nil // No messages
 	}
 
-	// Determine the sequence set for the last 10 messages
 	start := uint32(1)
 	if numMessages > 10 {
 		start = numMessages - 9
 	}
 	seqSet := imap.SeqSetNum(start, numMessages)
 
-	// Define what to fetch for each message
 	fetchOptions := &imap.FetchOptions{
 		Envelope: true,
 		BodySection: []*imap.FetchItemBodySection{
@@ -76,37 +69,35 @@ func FetchEmails(cfg *config.Config) ([]Email, error) {
 		},
 	}
 
-	// Fetch the messages
 	cmd := c.Fetch(seqSet, fetchOptions)
-	defer cmd.Close()
 
 	var emails []Email
 	for {
 		msg := cmd.Next()
 		if msg == nil {
-			break // All messages have been processed
+			break
 		}
 
+		buf, err := msg.Collect()
+		if err != nil {
+			log.Printf("failed to collect message data: %v", err)
+			continue
+		}
+		
 		var from, subject, body string
 		var date time.Time
 
-		// Get header info from the envelope
-		if env := msg.Envelope(); env != nil {
-			if len(env.From) > 0 {
-				from = env.From[0].Address()
+		if buf.Envelope != nil {
+			if len(buf.Envelope.From) > 0 {
+				from = buf.Envelope.From[0].Addr()
 			}
-			subject = env.Subject
-			date = env.Date
+			subject = buf.Envelope.Subject
+			date = buf.Envelope.Date
 		}
-
-		// Read the body content
-		if part := msg.BodySection(&imap.FetchItemBodySection{Specifier: imap.PartSpecifierText}); part != nil {
-			bodyBytes, err := io.ReadAll(part)
-			if err != nil {
-				log.Printf("failed to read body part: %v", err)
-				continue
-			}
-			body = string(bodyBytes)
+		
+		// Corrected: FindBodySection returns []byte, not io.Reader
+		if bodySection := buf.FindBodySection(&imap.FetchItemBodySection{Specifier: imap.PartSpecifierText}); bodySection != nil {
+			body = string(bodySection) // Directly convert []byte to string
 		}
 
 		emails = append(emails, Email{
@@ -116,7 +107,8 @@ func FetchEmails(cfg *config.Config) ([]Email, error) {
 			Date:    date,
 		})
 	}
-	if err := cmd.Err(); err != nil {
+
+	if err := cmd.Close(); err != nil {
 		return nil, fmt.Errorf("FETCH command failed: %w", err)
 	}
 
