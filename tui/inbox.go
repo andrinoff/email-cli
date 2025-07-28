@@ -2,115 +2,103 @@ package tui
 
 import (
 	"fmt"
+	"io"
 
-	"github.com/andrinoff/email-cli/config"
 	"github.com/andrinoff/email-cli/fetcher"
 	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// inboxItem wraps fetcher.Email to satisfy the list.Item interface.
-type inboxItem struct {
-	fetcher.Email
+var (
+	itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
+	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("205"))
+	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
+	inboxHelpStyle = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
+)
+
+type item struct {
+	title, desc string
 }
 
-func (i inboxItem) Title() string       { return i.Subject }
-func (i inboxItem) Description() string { return fmt.Sprintf("From: %s", i.From) }
-func (i inboxItem) FilterValue() string { return i.Subject }
+func (i item) Title() string       { return i.title }
+func (i item) Description() string { return i.desc }
+func (i item) FilterValue() string { return i.title + " " + i.desc }
+
+type itemDelegate struct{}
+
+func (d itemDelegate) Height() int                             { return 1 }
+func (d itemDelegate) Spacing() int                            { return 0 }
+func (d itemDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
+func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
+	i, ok := listItem.(item)
+	if !ok {
+		return
+	}
+
+	str := fmt.Sprintf("%d. %s", index+1, i.title)
+
+	// **FIX**: Corrected the function literal to accept a variadic string
+	fn := itemStyle.Render
+	if index == m.Index() {
+		fn = func(s ...string) string {
+			return selectedItemStyle.Render("> " + s[0])
+		}
+	}
+
+	fmt.Fprint(w, fn(str))
+}
 
 type Inbox struct {
-	list    list.Model
-	spinner spinner.Model
-	loading bool
-	err     error
+	list list.Model
 }
 
-func NewInbox() *Inbox {
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-
-	// Create an empty list for now. It will be populated later.
-	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
-	l.Title = "Inbox"
-
-	return &Inbox{
-		spinner: s,
-		list:    l,
-		loading: true,
+func NewInbox(emails []fetcher.Email) Inbox {
+	items := make([]list.Item, len(emails))
+	for i, email := range emails {
+		items[i] = item{
+			title: email.Subject,
+			desc:  email.From,
+		}
 	}
+
+	l := list.New(items, itemDelegate{}, 20, 14)
+	l.Title = "Inbox"
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(false)
+	l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+	l.Styles.PaginationStyle = paginationStyle
+	l.Styles.HelpStyle = inboxHelpStyle
+
+	return Inbox{list: l}
 }
 
-func (m *Inbox) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, fetchEmails)
+func (m Inbox) Init() tea.Cmd {
+	return nil
 }
 
-func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
+func (m Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case spinner.TickMsg:
-		if m.loading {
-			m.spinner, cmd = m.spinner.Update(msg)
-		}
-		return m, cmd
-
-	case emailsFetchedMsg:
-		m.loading = false
-		items := make([]list.Item, len(msg))
-		for i, email := range msg {
-			items[i] = inboxItem{email}
-		}
-		m.list.SetItems(items)
-		return m, nil
-
-	case errMsg:
-		m.err = msg.err
-		return m, tea.Quit
-
 	case tea.KeyMsg:
-		if msg.String() == "enter" && !m.loading {
-			selected := m.list.SelectedItem().(inboxItem)
-			return m, func() tea.Msg {
-				return ViewEmailMsg{Email: selected.Email}
+		if msg.String() == "enter" {
+			i, ok := m.list.SelectedItem().(item)
+			if ok {
+				_ = i
+				return m, func() tea.Msg {
+					return ViewEmailMsg{Index: m.list.Index()}
+				}
 			}
 		}
-
 	case tea.WindowSizeMsg:
-		// When the window size changes, update the list's dimensions.
-		m.list.SetSize(msg.Width, msg.Height)
+		m.list.SetWidth(msg.Width)
+		return m, nil
 	}
 
-	if !m.loading {
-		m.list, cmd = m.list.Update(msg)
-	}
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
 	return m, cmd
 }
 
-func (m *Inbox) View() string {
-	if m.err != nil {
-		return fmt.Sprintf("Error: %v", m.err)
-	}
-	if m.loading {
-		return fmt.Sprintf("\n\n   %s Fetching emails...\n\n", m.spinner.View())
-	}
-	return DocStyle.Render(m.list.View())
-}
-
-// --- Bubble Tea Commands and Messages ---
-
-type emailsFetchedMsg []fetcher.Email
-type errMsg struct{ err error }
-
-func fetchEmails() tea.Msg {
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return errMsg{err}
-	}
-	emails, err := fetcher.FetchEmails(cfg)
-	if err != nil {
-		return errMsg{err}
-	}
-	return emailsFetchedMsg(emails)
+func (m Inbox) View() string {
+	return "\n" + m.list.View()
 }

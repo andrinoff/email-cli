@@ -1,57 +1,70 @@
 package tui
 
 import (
-	"github.com/charmbracelet/bubbles/list"
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+)
+
+var (
+	titleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FAFAFA")).
+			Background(lipgloss.Color("#7D56F4")).
+			PaddingLeft(2).
+			PaddingRight(2)
+
+	choiceStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("205")).
+			PaddingLeft(2)
 )
 
 type Choice struct {
-	list list.Model
+	cursor int
 }
 
-func NewChoice() *Choice {
-	items := []list.Item{
-		choiceItem("View Inbox"),
-		choiceItem("Send Email"),
-	}
-
-	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
-	l.Title = "What would you like to do?"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
-
-	return &Choice{list: l}
+func NewChoice() Choice {
+	return Choice{cursor: 0}
 }
 
-type choiceItem string
-
-func (i choiceItem) FilterValue() string { return "" }
-func (i choiceItem) Title() string       { return string(i) }
-func (i choiceItem) Description() string { return "" }
-
-func (m *Choice) Init() tea.Cmd {
+func (m Choice) Init() tea.Cmd {
 	return nil
 }
 
-func (m *Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
+func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, msg.Height)
 	case tea.KeyMsg:
-		if msg.String() == "enter" {
-			switch m.list.SelectedItem().(choiceItem) {
-			case "View Inbox":
-				return m, func() tea.Msg { return GoToInboxMsg{} }
-			case "Send Email":
-				return m, func() tea.Msg { return GoToSendMsg{} }
+		switch msg.String() {
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < 1 {
+				m.cursor++
 			}
 		}
 	}
-	m.list, cmd = m.list.Update(msg)
-	return m, cmd
+	return m, nil
 }
 
-func (m *Choice) View() string {
-	return DocStyle.Render(m.list.View())
+func (m Choice) View() string {
+	s := "What would you like to do?\n\n"
+
+	choices := []string{"View Inbox", "Compose Email"}
+
+	for i, choice := range choices {
+		cursor := " "
+		if m.cursor == i {
+			cursor = ">"
+			s += choiceStyle.Render(fmt.Sprintf("%s %s\n", cursor, choice))
+		} else {
+			s += fmt.Sprintf("%s %s\n", cursor, choice)
+		}
+	}
+
+	s += "\nPress q to quit.\n"
+
+	return s
 }

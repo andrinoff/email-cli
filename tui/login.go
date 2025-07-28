@@ -1,54 +1,38 @@
 package tui
 
 import (
-	"strings"
-
-	"github.com/andrinoff/email-cli/config"
-	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-type loginModel struct {
+// Login holds the state for the login form.
+type Login struct {
 	focusIndex int
 	inputs     []textinput.Model
-	cursorMode cursor.Mode
-	config     *config.Config
-	err        error
 }
 
-func initialLoginModel() loginModel {
-	m := loginModel{
-		inputs: make([]textinput.Model, 4),
+// NewLogin creates a new login model. This function was missing.
+func NewLogin() tea.Model {
+	m := Login{
+		inputs: make([]textinput.Model, 2),
 	}
 
 	var t textinput.Model
 	for i := range m.inputs {
 		t = textinput.New()
-		t.Cursor.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-		t.CharLimit = 32
+		t.Cursor.Style = focusedStyle
+		t.CharLimit = 64
 
 		switch i {
 		case 0:
-			t.Placeholder = "gmail or icloud"
+			t.Placeholder = "Email"
 			t.Focus()
-			t.Prompt = "> "
-			t.CharLimit = 10
+			t.Prompt = "✉️ > "
 		case 1:
-			t.Placeholder = "your@email.com"
-			t.Prompt = "  "
-			t.CharLimit = 64
-		case 2:
-			t.Placeholder = "App-specific password"
-			t.Prompt = "  "
+			t.Placeholder = "Password"
 			t.EchoMode = textinput.EchoPassword
-			t.EchoCharacter = '•'
-			t.CharLimit = 64
-		case 3:
-			t.Placeholder = "Name"
-			t.Prompt = "  "
-			t.CharLimit = 64
+			t.Prompt = "🔑 > "
 		}
 		m.inputs[i] = t
 	}
@@ -56,92 +40,69 @@ func initialLoginModel() loginModel {
 	return m
 }
 
-func (m loginModel) Init() tea.Cmd { return textinput.Blink }
+// Init initializes the login model.
+func (m Login) Init() tea.Cmd {
+	return textinput.Blink
+}
 
-func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update handles messages for the login model.
+func (m Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "esc":
-			return m, tea.Quit
-		case "tab", "shift+tab", "enter", "up", "down":
-			s := msg.String()
-			if s == "enter" && m.focusIndex == len(m.inputs) {
-				m.config = &config.Config{
-					ServiceProvider: m.inputs[0].Value(),
-					Email:           m.inputs[1].Value(),
-					Password:        m.inputs[2].Value(),
-					Name: 		     m.inputs[3].Value(),
+		switch msg.Type {
+		// On Enter, if we are on the last field, submit the credentials.
+		case tea.KeyEnter:
+			if m.focusIndex == len(m.inputs)-1 {
+				return m, func() tea.Msg {
+					return Credentials{
+						Email:    m.inputs[0].Value(),
+						Password: m.inputs[1].Value(),
+					}
 				}
-				if err := config.SaveConfig(m.config); err != nil {
-					m.err = err
-					return m, nil
-				}
-				return m, tea.Quit
 			}
+			fallthrough
+		// Cycle focus between inputs.
+		case tea.KeyTab, tea.KeyShiftTab, tea.KeyUp, tea.KeyDown:
+			s := msg.String()
 			if s == "up" || s == "shift+tab" {
 				m.focusIndex--
 			} else {
 				m.focusIndex++
 			}
-			if m.focusIndex > len(m.inputs) {
+
+			if m.focusIndex >= len(m.inputs) {
 				m.focusIndex = 0
 			} else if m.focusIndex < 0 {
-				m.focusIndex = len(m.inputs)
+				m.focusIndex = len(m.inputs) - 1
 			}
+
 			cmds := make([]tea.Cmd, len(m.inputs))
 			for i := 0; i < len(m.inputs); i++ {
 				if i == m.focusIndex {
 					cmds[i] = m.inputs[i].Focus()
-					m.inputs[i].Prompt = "> "
-					continue
+				} else {
+					m.inputs[i].Blur()
 				}
-				m.inputs[i].Blur()
-				m.inputs[i].Prompt = "  "
 			}
 			return m, tea.Batch(cmds...)
 		}
 	}
-	cmd := m.updateInputs(msg)
-	return m, cmd
-}
 
-func (m *loginModel) updateInputs(msg tea.Msg) tea.Cmd {
-	cmds := make([]tea.Cmd, len(m.inputs))
+	// Update the focused input field.
+	var cmds = make([]tea.Cmd, len(m.inputs))
 	for i := range m.inputs {
 		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
 	}
-	return tea.Batch(cmds...)
+	return m, tea.Batch(cmds...)
 }
 
-func (m loginModel) View() string {
-	var b strings.Builder
-	b.WriteString(InfoStyle.Render(" Welcome to email-cli! Please configure your email account. ") + "\n\n")
-	for i := range m.inputs {
-		b.WriteString(m.inputs[i].View())
-		if i < len(m.inputs)-1 {
-			b.WriteRune('\n')
-		}
-	}
-	button := "\n\n" + "[ Submit ]"
-	if m.focusIndex == len(m.inputs) {
-		button = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Render("[ Submit ]")
-	}
-	b.WriteString(button)
-	if m.err != nil {
-		b.WriteString("\n\nError: " + m.err.Error())
-	}
-	b.WriteString(HelpStyle.Render("\n\n(tab to navigate, enter to submit, esc to quit)"))
-	return DialogBoxStyle.Render(b.String())
-}
-
-// RunLogin starts the login UI and returns the created config.
-func RunLogin() (*config.Config, error) {
-	p := tea.NewProgram(initialLoginModel())
-	m, err := p.Run()
-	if err != nil {
-		return nil, err
-	}
-	finalModel := m.(loginModel)
-	return finalModel.config, nil
+// View renders the login form.
+func (m Login) View() string {
+	return lipgloss.JoinVertical(lipgloss.Left,
+		titleStyle.Render("Welcome to Email CLI"),
+		"Please enter your credentials.",
+		m.inputs[0].View(),
+		m.inputs[1].View(),
+		helpStyle.Render("\nenter: submit • tab: next field • esc: quit"),
+	)
 }
