@@ -41,11 +41,18 @@ func SendEmail(cfg *config.Config, to []string, subject, body string) error {
 	// Set up authentication information.
 	auth := smtp.PlainAuth("", cfg.Email, cfg.Password, smtpServer)
 
+	// Format the From header to include the sender's name.
+	fromHeader := cfg.Email
+	if cfg.Name != "" {
+		fromHeader = fmt.Sprintf("%s <%s>", cfg.Name, cfg.Email)
+	}
+
 	// Construct the full email message with proper headers.
 	headers := map[string]string{
-		"From":         cfg.Email,
+		"From":         fromHeader,
 		"To":           to[0], // Assuming one recipient for the header display
 		"Subject":      subject,
+		"Date":         time.Now().Format(time.RFC1123Z),
 		"Message-ID":   generateMessageID(cfg.Email),
 		"Content-Type": "text/plain; charset=UTF-8", // Explicitly set content type
 	}
