@@ -26,23 +26,24 @@ jobs:
         with:
           go-version: "1.24" # Match the Go version in go.mod
 
+      - name: Fetch all tags
+        run: git fetch --force --tags
+
       - name: Automatic Tagging
         id: conventional-commits
         uses: webiny/action-conventional-commits@v1.3.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Fetch all tags x2
+        run: git fetch --force --tags
+
       - name: Run GoReleaser
+        if: steps.conventional-commits.outputs.tag
         uses: goreleaser/goreleaser-action@v5
         with:
-          # GoReleaser will automatically use the latest version.
-          # You can specify a specific version if needed.
           version: latest
           args: release --clean
         env:
-          # This token is used to create the GitHub Release and upload assets.
-          # It's automatically provided by GitHub Actions.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # This is a personal access token with 'repo' scope, used to push
-          # the updated formula to homebrew-email-cli repository.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
