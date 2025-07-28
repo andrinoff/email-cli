@@ -1,0 +1,109 @@
+# This is the configuration file for GoReleaser.
+# It defines how your project should be built, packaged, and released.
+# For more information, see: https://goreleaser.com/customization/
+version: 1
+
+# The 'before' hook runs commands before the build process starts.
+before:
+  hooks:
+    # Tidy up the go.mod file to ensure all dependencies are clean.
+    - go mod tidy
+
+# 'builds' defines the matrix of binaries to create.
+builds:
+  - # The main build configuration for your CLI.
+    # The binary name will be 'email-cli'.
+    id: "email-cli"
+    # The main entrypoint of your application.
+    main: .
+    # The Go compiler to use.
+    goos:
+      - linux
+      - darwin # macOS
+    goarch:
+      - amd64 # Intel
+      - arm64 # Apple Silicon
+    # Environment variables to pass to the Go compiler.
+    env:
+      - CGO_ENABLED=0
+    # Linker flags to strip debug information and reduce binary size.
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+# 'archives' defines how to package the built binaries.
+archives:
+  - # The archive configuration.
+    # This will create .tar.gz files.
+    format: tar.gz
+    # A template for the archive file names.
+    # e.g., email-cli_1.2.3_darwin_amd64.tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Files to include in the archive.
+    files:
+      - LICENSE
+      - README.md
+
+# 'checksum' creates a file with SHA256 checksums for all artifacts.
+checksum:
+  name_template: "checksums.txt"
+
+# 'snapshot' configures how test releases are named when running on non-tagged commits.
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+# 'changelog' configures the automatic generation of release notes.
+changelog:
+  sort: asc
+  filters:
+    # Exclude commit messages that match these patterns from the changelog.
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "Merge branch"
+
+# 'release' configures the GitHub Release creation.
+release:
+  # If set to true, GoReleaser will automatically draft a new release.
+  # Set to false to automatically publish the release.
+  draft: false
+  # If set to true, will mark the release as a pre-release.
+  prerelease: auto
+  # Auto-generates the release notes from the changelog.
+  generate_release_notes: true
+
+# 'brews' configures the Homebrew tap integration.
+brews:
+  - # The configuration for your Homebrew tap.
+    # The name of your formula file will be 'email-cli.rb'.
+    name: email-cli
+    # The GitHub repository for your Homebrew tap.
+    tap:
+      owner: andrinoff
+      name: homebrew-email-cli
+      # The token to use for pushing to the tap repository.
+      # It uses the secret you'll create in your repository settings.
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+
+    # The commit author for the tap update.
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+
+    # A description for your formula.
+    description: "A beautiful and functional email client for your terminal."
+    # The homepage URL for your formula.
+    homepage: "https://github.com/andrinoff/email-cli"
+
+    # The dependencies for your formula.
+    # Since it's a pre-compiled binary, there are no runtime dependencies.
+    dependencies: []
+
+    # The test block for your formula.
+    # This command will be run by `brew test email-cli`.
+    test: |
+      system "#{bin}/email-cli --version"
+
+    # The installation instructions for your formula.
+    # This tells Homebrew to just install the binary.
+    install: |
+      bin.install "email-cli"
