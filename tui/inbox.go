@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
-	inboxHelpStyle    = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
+	paginationStyle = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
+	inboxHelpStyle  = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
 )
 
 type item struct {
@@ -50,7 +50,7 @@ type Inbox struct {
 	list list.Model
 }
 
-func NewInbox(emails []fetcher.Email) Inbox {
+func NewInbox(emails []fetcher.Email) *Inbox {
 	items := make([]list.Item, len(emails))
 	for i, email := range emails {
 		items[i] = item{
@@ -67,14 +67,14 @@ func NewInbox(emails []fetcher.Email) Inbox {
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = inboxHelpStyle
 
-	return Inbox{list: l}
+	return &Inbox{list: l}
 }
 
-func (m Inbox) Init() tea.Cmd {
+func (m *Inbox) Init() tea.Cmd {
 	return nil
 }
 
-func (m Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "enter" {
@@ -92,10 +92,12 @@ func (m Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
+	var newModel list.Model
+	newModel, cmd = m.list.Update(msg)
+	m.list = newModel
 	return m, cmd
 }
 
-func (m Inbox) View() string {
+func (m *Inbox) View() string {
 	return "\n" + m.list.View()
 }

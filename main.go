@@ -18,6 +18,7 @@ type mainModel struct {
 	current tea.Model
 	config  *config.Config
 	emails  []fetcher.Email
+	inbox   *tui.Inbox
 	width   int
 	height  int
 	err     error
@@ -58,10 +59,15 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
-		// Allow ESC to go back to the main menu
+		// Allow ESC to go back
 		if msg.String() == "esc" {
-			if _, ok := m.current.(*tui.Choice); !ok {
-				m.current = tui.NewChoice()
+			// Check the type of the current view to decide where to go.
+			switch m.current.(type) {
+			case *tui.EmailView:
+				m.current = m.inbox // Go back to the cached inbox
+				return m, nil
+			case *tui.Inbox, *tui.Composer:
+				m.current = tui.NewChoice() // Go back to the main menu
 				return m, m.current.Init()
 			}
 		}
@@ -89,18 +95,21 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tui.EmailsFetchedMsg:
 		m.emails = msg.Emails
-		m.current = tui.NewInbox(m.emails)
+		m.inbox = tui.NewInbox(m.emails)
+		m.current = m.inbox
 		// Manually set the size of the new view
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
 
 	case tui.GoToSendMsg:
+		// NewComposer now returns *Composer, so we assign it directly.
 		m.current = tui.NewComposer(m.config.Email)
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
 
 	case tui.ViewEmailMsg:
-		m.current = tui.NewEmailView(m.emails[msg.Index], m.width, m.height)
+		emailView := tui.NewEmailView(m.emails[msg.Index], m.width, m.height)
+		m.current = emailView
 		cmds = append(cmds, m.current.Init())
 
 	case tui.SendEmailMsg:

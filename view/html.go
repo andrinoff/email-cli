@@ -40,6 +40,9 @@ func ProcessBody(rawBody string) (string, error) {
 		return "", fmt.Errorf("could not parse email body: %w", err)
 	}
 
+	// Remove style and script tags to clean up the view
+	doc.Find("style, script").Remove()
+
 	// Add newlines after block elements for better spacing
 	doc.Find("p, div, h1, h2, h3, h4, h5, h6").Each(func(i int, s *goquery.Selection) {
 		s.After("\n\n")

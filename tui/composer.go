@@ -20,16 +20,16 @@ var (
 
 // Composer model holds the state of the email composition UI.
 type Composer struct {
-	focusIndex int
-	toInput    textinput.Model
+	focusIndex   int
+	toInput      textinput.Model
 	subjectInput textinput.Model
-	bodyInput  textarea.Model
-	fromAddr   string
+	bodyInput    textarea.Model
+	fromAddr     string
 }
 
 // NewComposer initializes a new composer model.
-func NewComposer(from string) Composer {
-	m := Composer{fromAddr: from}
+func NewComposer(from string) *Composer {
+	m := &Composer{fromAddr: from}
 
 	m.toInput = textinput.New()
 	m.toInput.Cursor.Style = cursorStyle
@@ -54,18 +54,19 @@ func NewComposer(from string) Composer {
 	return m
 }
 
-func (m Composer) Init() tea.Cmd {
+func (m *Composer) Init() tea.Cmd {
 	return textinput.Blink
 }
 
-func (m Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+		// IMPORTANT: Removed tea.KeyEsc from this case
+		case tea.KeyCtrlC:
 			return m, tea.Quit
 
 		// Handle Tab and Shift+Tab to cycle focus between inputs.
@@ -82,7 +83,7 @@ func (m Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.focusIndex < 0 {
 				m.focusIndex = 3
 			}
-			
+
 			// Blur all inputs
 			m.toInput.Blur()
 			m.subjectInput.Blur()
@@ -91,11 +92,11 @@ func (m Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Focus the correct input
 			switch m.focusIndex {
 			case 0:
-				m.toInput.Focus()
+				cmds = append(cmds, m.toInput.Focus())
 			case 1:
-				m.subjectInput.Focus()
+				cmds = append(cmds, m.subjectInput.Focus())
 			case 2:
-				m.bodyInput.Focus()
+				cmds = append(cmds, m.bodyInput.Focus())
 			}
 			return m, tea.Batch(cmds...)
 
@@ -131,7 +132,7 @@ func (m Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View renders the UI.
-func (m Composer) View() string {
+func (m *Composer) View() string {
 	button := &blurredButton
 	if m.focusIndex == 3 {
 		button = &focusedButton
@@ -144,6 +145,6 @@ func (m Composer) View() string {
 		m.subjectInput.View(),
 		m.bodyInput.View(),
 		*button,
-		helpStyle.Render("tab: next field • esc: quit"),
+		helpStyle.Render("tab: next field • esc: back to menu"),
 	)
 }
