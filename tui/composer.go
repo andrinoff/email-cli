@@ -13,7 +13,6 @@ var (
 	blurredStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	cursorStyle         = focusedStyle.Copy()
 	noStyle             = lipgloss.NewStyle()
-	helpStyle           = blurredStyle.Copy()
 	focusedButton       = focusedStyle.Copy().Render("[ Send ]")
 	blurredButton       = blurredStyle.Copy().Render("[ Send ]")
 	emailRecipientStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)

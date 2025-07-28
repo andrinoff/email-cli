@@ -2,22 +2,32 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FAFAFA")).
-			Background(lipgloss.Color("#7D56F4")).
-			PaddingLeft(2).
-			PaddingRight(2)
+	// A more beautiful style for the main menu
+	docStyle = lipgloss.NewStyle().Margin(1, 2)
 
-	choiceStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("205")).
-			PaddingLeft(2)
+	titleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFDF5")).
+			Background(lipgloss.Color("#25A065")).
+			Padding(0, 1)
+
+	helpStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
+
+	// Styling for the choice list
+	listHeader = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			PaddingBottom(1)
+
+	// Custom item styles
+	itemStyle         = lipgloss.NewStyle().PaddingLeft(2)
+	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("205"))
 )
 
 type Choice struct {
@@ -41,7 +51,7 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < 1 {
+			if m.cursor < 1 { // We have two choices
 				m.cursor++
 			}
 		case "enter":
@@ -56,21 +66,29 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Choice) View() string {
-	s := "What would you like to do?\n\n"
+	var b strings.Builder
 
+	// Title
+	b.WriteString(titleStyle.Render("Email CLI") + "\n\n")
+
+	// Header
+	b.WriteString(listHeader.Render("What would you like to do?"))
+	b.WriteString("\n\n")
+
+	// Choices
 	choices := []string{"View Inbox", "Compose Email"}
-
 	for i, choice := range choices {
-		cursor := " "
 		if m.cursor == i {
-			cursor = ">"
-			s += choiceStyle.Render(fmt.Sprintf("%s %s\n", cursor, choice))
+			b.WriteString(selectedItemStyle.Render(fmt.Sprintf("> %s", choice)))
 		} else {
-			s += fmt.Sprintf("%s %s\n", cursor, choice)
+			b.WriteString(itemStyle.Render(fmt.Sprintf("  %s", choice)))
 		}
+		b.WriteString("\n")
 	}
 
-	s += "\nPress q to quit.\n"
+	// Help
+	b.WriteString("\n\n")
+	b.WriteString(helpStyle.Render("Use ↑/↓ to navigate, enter to select, and q to quit."))
 
-	return s
+	return docStyle.Render(b.String())
 }

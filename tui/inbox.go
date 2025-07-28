@@ -11,8 +11,6 @@ import (
 )
 
 var (
-	itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
-	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("205"))
 	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
 	inboxHelpStyle    = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
 )
