@@ -1,0 +1,126 @@
+body {
+  font-family: "Courier New", Courier, monospace;
+  margin: 0;
+  background-color: #121212;
+  color: #d0f0c0;
+}
+
+main {
+  min-height: 100vh;
+}
+
+header {
+  background-color: #1e1e1e;
+  border-bottom: 1px solid #444;
+  padding: 1rem 2rem;
+}
+
+nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #00ff5f;
+}
+
+nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+}
+
+nav ul li {
+  margin-left: 1.5rem;
+}
+
+nav ul li a {
+  text-decoration: none;
+  color: #d0f0c0;
+}
+
+nav ul li a:hover {
+  color: #00ff5f;
+}
+
+main {
+  padding: 2rem;
+}
+
+.features-list h2,
+.usage h2,
+.contact-info h2,
+.support h2 {
+  color: #00ff5f;
+  border-bottom: 2px solid #00ff5f;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+a {
+  color: #00ff5f;
+  text-decoration: none;
+}
+
+.features-list ul,
+.usage ul {
+  list-style: none;
+  padding: 0;
+}
+
+.features-list ul li,
+.usage ul li {
+  background-color: #1e1e1e;
+  padding: 1rem;
+  border-radius: 5px;
+  margin-bottom: 1rem;
+  border-left: 4px solid #00ff5f;
+  color: #d0f0c0;
+}
+
+footer {
+  text-align: center;
+  padding: 2rem;
+  background-color: #1e1e1e;
+  border-top: 1px solid #444;
+  font-size: 0.9rem;
+  color: #888;
+}
+
+footer a {
+  color: #00ff5f;
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
+.button {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background-color: #00ff5f;
+  color: #121212;
+  text-decoration: none;
+  border-radius: 5px;
+  transition: background-color 0.3s ease;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2rem;
+}
+
+code {
+  background-color: #1e1e1e;
+  padding: 0.3rem;
+  border-radius: 5px;
+  color: #00ff5f;
+}
