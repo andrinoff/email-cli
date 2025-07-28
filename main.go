@@ -61,12 +61,13 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Allow ESC to go back
 		if msg.String() == "esc" {
+			// Check the type of the current view to decide where to go.
 			switch m.current.(type) {
 			case *tui.EmailView:
-				m.current = m.inbox
+				m.current = m.inbox // Go back to the cached inbox
 				return m, nil
 			case *tui.Inbox, *tui.Composer:
-				m.current = tui.NewChoice()
+				m.current = tui.NewChoice() // Go back to the main menu
 				return m, m.current.Init()
 			}
 		}
@@ -101,8 +102,8 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.current.Init())
 
 	case tui.GoToSendMsg:
-		composer := tui.NewComposer(m.config.Email)
-		m.current = &composer
+		// NewComposer now returns *Composer, so we assign it directly.
+		m.current = tui.NewComposer(m.config.Email)
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
 
