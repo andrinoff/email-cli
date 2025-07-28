@@ -2,199 +2,121 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"time"
 
 	"github.com/andrinoff/email-cli/config"
-	"github.com/andrinoff/email-cli/fetcher"
-	"github.com/andrinoff/email-cli/view" // Updated package
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/viewport" // Import viewport
+	"github.com/andrinoff/email-cli/sender"
+	"github.com/andrinoff/email-cli/tui"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
-var (
-	appStyle = lipgloss.NewStyle().Padding(1, 2)
-	headerStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderBottom(true)
-)
-
-// emailItem wraps fetcher.Email to satisfy the list.Item interface.
-type emailItem struct {
-	fetcher.Email
+// mainModel now holds the state for the entire application.
+type mainModel struct {
+	current tea.Model
+	config  *config.Config
+	width   int
+	height  int
+	err     error
 }
 
-func (e emailItem) Title() string       { return e.Subject }
-func (e emailItem) Description() string { return fmt.Sprintf("From: %s", e.From) }
-func (e emailItem) FilterValue() string { return e.Subject }
-
-type model struct {
-	list         list.Model
-	spinner      spinner.Model
-	viewport     viewport.Model
-	state        viewState
-	selectedItem emailItem
-	err          error
-}
-
-type viewState int
-
-const (
-	choosingState viewState = iota
-	loadingState
-	inboxState
-	emailViewState
-)
-
-// Messages for tea.Cmd
-type (
-	emailsFetchedMsg []fetcher.Email
-	errMsg           struct{ err error }
-)
-
-func (e errMsg) Error() string { return e.err.Error() }
-
-func newModel() *model {
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-
-	initialItems := []list.Item{
-		emailItem{fetcher.Email{Subject: "View Inbox"}},
-		emailItem{fetcher.Email{Subject: "Send Email (coming soon...)"}},
+// newInitialModel now returns a pointer, which is crucial for state management.
+func newInitialModel(cfg *config.Config) *mainModel {
+	return &mainModel{
+		current: tui.NewChoice(),
+		config:  cfg,
 	}
-
-	m := &model{
-		spinner:  s,
-		list:     list.New(initialItems, list.NewDefaultDelegate(), 0, 0),
-		state:    choosingState,
-		viewport: viewport.New(10, 10), // Initial size
-	}
-	m.list.Title = "Email CLI"
-	m.list.SetShowStatusBar(false)
-	return m
 }
 
-func (m *model) Init() tea.Cmd {
-	return nil
+func (m *mainModel) Init() tea.Cmd {
+	return m.current.Init()
 }
 
-func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		listHeight := msg.Height - 2
-		// Adjust viewport size, leaving space for a header
-		viewportHeaderHeight := 4
-		m.list.SetSize(msg.Width-2, listHeight)
-		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - viewportHeaderHeight
+		m.width = msg.Width
+		m.height = msg.Height
+		// Pass the window size message to the current view
+		m.current, cmd = m.current.Update(msg)
+		cmds = append(cmds, cmd)
+		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
+		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
-		case "esc":
-			if m.state == emailViewState {
-				m.state = inboxState
-			} else if m.state == inboxState {
-				// Reset to initial choice list
-				initialItems := []list.Item{
-					emailItem{fetcher.Email{Subject: "View Inbox"}},
-					emailItem{fetcher.Email{Subject: "Send Email (coming soon...)"}},
-				}
-				m.list.SetItems(initialItems)
-				m.list.Title = "Email CLI"
-				m.state = choosingState
-			}
-			return m, nil
-		case "enter":
-			if m.state == choosingState {
-				selected := m.list.SelectedItem().(emailItem)
-				if selected.Subject == "View Inbox" {
-					m.state = loadingState
-					cmds = append(cmds, m.spinner.Tick, fetchEmails)
-				}
-			} else if m.state == inboxState {
-				m.selectedItem = m.list.SelectedItem().(emailItem)
-				m.state = emailViewState
-
-				// Process body and set viewport content
-				body, err := view.ProcessBody(m.selectedItem.Body)
-				if err != nil {
-					body = fmt.Sprintf("Error rendering body: %v", err)
-				}
-				m.viewport.SetContent(body)
-				m.viewport.GotoTop() // Scroll to top on new email
+		}
+		// Allow ESC to go back to the main menu
+		if msg.String() == "esc" {
+			if _, ok := m.current.(*tui.Choice); !ok {
+				m.current = tui.NewChoice()
+				return m, m.current.Init()
 			}
 		}
 
-	case emailsFetchedMsg:
-		items := make([]list.Item, len(msg))
-		for i, email := range msg {
-			items[i] = emailItem{fetcher.Email(email)}
-		}
-		m.list.SetItems(items)
-		m.list.Title = "Inbox"
-		m.state = inboxState
+	// --- Custom Messages for switching views ---
+	case tui.GoToInboxMsg:
+		m.current = tui.NewInbox()
+		// Manually set the size of the new view
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		cmds = append(cmds, m.current.Init())
 
-	case errMsg:
-		m.err = msg
-		return m, tea.Quit
+	case tui.GoToSendMsg:
+		m.current = tui.NewComposer(m.config.Email)
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		cmds = append(cmds, m.current.Init())
+
+	case tui.ViewEmailMsg:
+		m.current = tui.NewEmailView(msg.Email, m.width, m.height)
+		cmds = append(cmds, m.current.Init())
+
+	case tui.SendEmailMsg:
+		m.current = tui.NewStatus("Sending email...")
+		cmds = append(cmds, m.current.Init(), sendEmail(m.config, msg))
+
+	case tui.EmailSentMsg:
+		m.current = tui.NewChoice()
+		cmds = append(cmds, m.current.Init())
 	}
 
-	// Handle updates for the current state
-	switch m.state {
-	case loadingState:
-		m.spinner, cmd = m.spinner.Update(msg)
-	case inboxState, choosingState:
-		m.list, cmd = m.list.Update(msg)
-	case emailViewState:
-		m.viewport, cmd = m.viewport.Update(msg)
-	}
+	// Pass all other messages to the current view
+	m.current, cmd = m.current.Update(msg)
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
 }
 
-func (m *model) View() string {
-	if m.err != nil {
-		return fmt.Sprintf("Error: %v\n", m.err)
-	}
-
-	switch m.state {
-	case loadingState:
-		return fmt.Sprintf("\n\n   %s Fetching emails...\n\n", m.spinner.View())
-	case emailViewState:
-		header := fmt.Sprintf("From: %s\nSubject: %s", m.selectedItem.From, m.selectedItem.Subject)
-		styledHeader := headerStyle.Width(m.viewport.Width).Render(header)
-		return fmt.Sprintf("%s\n%s", styledHeader, m.viewport.View())
-	default: // choosingState and inboxState
-		return appStyle.Render(m.list.View())
-	}
+func (m *mainModel) View() string {
+	return m.current.View()
 }
 
-func fetchEmails() tea.Msg {
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return errMsg{err}
+// sendEmail is a command that sends an email in the background.
+func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
+	return func() tea.Msg {
+		recipients := []string{msg.To}
+		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body)
+		if err != nil {
+			log.Printf("Failed to send email: %v", err) // Log error
+		}
+		time.Sleep(1 * time.Second) // Give user time to see the "Sending" message
+		return tui.EmailSentMsg{}
 	}
-	emails, err := fetcher.FetchEmails(cfg)
-	if err != nil {
-		return errMsg{err}
-	}
-	return emailsFetchedMsg(emails)
 }
 
 func main() {
-	p := tea.NewProgram(newModel(), tea.WithAltScreen())
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("could not load config: %v", err)
+	}
+
+	p := tea.NewProgram(newInitialModel(cfg), tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
-		fmt.Println("Error running program:", err)
+		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
 }
