@@ -1,5 +1,9 @@
 # Email CLI 📧
 
+[![Go CI](https://github.com/andrinoff/email-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/andrinoff/email-cli/actions/workflows/ci.yml)
+[![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/issues)
+
+
 A beautiful and functional email client for your terminal, built with Go and the charming Bubble Tea TUI library. Never leave your command line to check your inbox or send an email again!
 
 ![Main Menu Screenshot](assets/preview.png)
