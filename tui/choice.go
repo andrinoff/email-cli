@@ -44,6 +44,12 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < 1 {
 				m.cursor++
 			}
+		case "enter":
+			if m.cursor == 0 {
+				return m, func() tea.Msg { return GoToInboxMsg{} }
+			} else if m.cursor == 1 {
+				return m, func() tea.Msg { return GoToSendMsg{} }
+			}
 		}
 	}
 	return m, nil

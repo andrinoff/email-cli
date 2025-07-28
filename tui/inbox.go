@@ -14,7 +14,7 @@ var (
 	itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
 	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("205"))
 	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
-	inboxHelpStyle = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
+	inboxHelpStyle    = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
 )
 
 type item struct {
@@ -38,7 +38,6 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 
 	str := fmt.Sprintf("%d. %s", index+1, i.title)
 
-	// **FIX**: Corrected the function literal to accept a variadic string
 	fn := itemStyle.Render
 	if index == m.Index() {
 		fn = func(s ...string) string {
@@ -65,7 +64,7 @@ func NewInbox(emails []fetcher.Email) Inbox {
 	l := list.New(items, itemDelegate{}, 20, 14)
 	l.Title = "Inbox"
 	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
+	l.SetFilteringEnabled(true)
 	l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = inboxHelpStyle

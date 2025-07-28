@@ -41,3 +41,9 @@ type EmailsFetchedMsg struct {
 
 // A message to indicate that an error occurred while fetching emails.
 type FetchErr error
+
+// A message to navigate to the inbox view.
+type GoToInboxMsg struct{}
+
+// A message to navigate to the composer view.
+type GoToSendMsg struct{}

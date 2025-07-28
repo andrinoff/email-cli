@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/andrinoff/email-cli/config"
+	"github.com/andrinoff/email-cli/fetcher"
 	"github.com/andrinoff/email-cli/sender"
 	"github.com/andrinoff/email-cli/tui"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,6 +17,7 @@ import (
 type mainModel struct {
 	current tea.Model
 	config  *config.Config
+	emails  []fetcher.Email
 	width   int
 	height  int
 	err     error
@@ -60,7 +62,12 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// --- Custom Messages for switching views ---
 	case tui.GoToInboxMsg:
-		m.current = tui.NewInbox()
+		m.current = tui.NewStatus("Fetching emails...")
+		return m, tea.Batch(m.current.Init(), fetchEmails(m.config))
+
+	case tui.EmailsFetchedMsg:
+		m.emails = msg.Emails
+		m.current = tui.NewInbox(m.emails)
 		// Manually set the size of the new view
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
@@ -71,14 +78,14 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.current.Init())
 
 	case tui.ViewEmailMsg:
-		m.current = tui.NewEmailView(msg.Email, m.width, m.height)
+		m.current = tui.NewEmailView(m.emails[msg.Index], m.width, m.height)
 		cmds = append(cmds, m.current.Init())
 
 	case tui.SendEmailMsg:
 		m.current = tui.NewStatus("Sending email...")
 		cmds = append(cmds, m.current.Init(), sendEmail(m.config, msg))
 
-	case tui.EmailSentMsg:
+	case tui.EmailResultMsg:
 		m.current = tui.NewChoice()
 		cmds = append(cmds, m.current.Init())
 	}
@@ -101,15 +108,28 @@ func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body)
 		if err != nil {
 			log.Printf("Failed to send email: %v", err) // Log error
+			return tui.EmailResultMsg{Err: err}
 		}
 		time.Sleep(1 * time.Second) // Give user time to see the "Sending" message
-		return tui.EmailSentMsg{}
+		return tui.EmailResultMsg{}
+	}
+}
+
+func fetchEmails(cfg *config.Config) tea.Cmd {
+	return func() tea.Msg {
+		emails, err := fetcher.FetchEmails(cfg)
+		if err != nil {
+			return tui.FetchErr(err)
+		}
+		return tui.EmailsFetchedMsg{Emails: emails}
 	}
 }
 
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
+		// If the config doesn't exist, we can guide the user to create one.
+		// For now, we'll just log a fatal error.
 		log.Fatalf("could not load config: %v", err)
 	}
 
