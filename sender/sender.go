@@ -1,34 +1,65 @@
 package sender
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net/smtp"
+	"time"
 
-	"github.com/andrinoff/email-cli/config" // Import the local config package
+	"github.com/andrinoff/email-cli/config"
 )
 
-// SendEmail sends an email using the provided configuration and content.
-func SendEmail(cfg *config.Config, to []string, subject, body string) error {
-	var smtpHost, smtpPort string
+// generateMessageID creates a unique Message-ID header.
+// This is a crucial header for deliverability, as its absence is a spam indicator.
+func generateMessageID(from string) string {
+	// Generate a random part to ensure uniqueness
+	buf := make([]byte, 16)
+	_, err := rand.Read(buf)
+	if err != nil {
+		// Fallback to a less random but still unique value if crypto/rand fails
+		return fmt.Sprintf("<%d.%s>", time.Now().UnixNano(), from)
+	}
+	return fmt.Sprintf("<%x@%s>", buf, from)
+}
 
+func SendEmail(cfg *config.Config, to []string, subject, body string) error {
+	var smtpServer string
+	var smtpPort int
+
+	// Determine the SMTP server based on the service provider in the config.
 	switch cfg.ServiceProvider {
 	case "gmail":
-		smtpHost = "smtp.gmail.com"
-		smtpPort = "587"
+		smtpServer = "smtp.gmail.com"
+		smtpPort = 587
 	case "icloud":
-		smtpHost = "smtp.mail.me.com"
-		smtpPort = "587"
+		smtpServer = "smtp.mail.me.com"
+		smtpPort = 587
 	default:
-		return fmt.Errorf("unsupported service provider: %s", cfg.ServiceProvider)
+		return fmt.Errorf("unsupported or missing service_provider in config.json: %s", cfg.ServiceProvider)
 	}
 
-	auth := smtp.PlainAuth("", cfg.Email, cfg.Password, smtpHost)
-	msg := fmt.Sprintf("From: %s <%s>\r\n", cfg.Name, cfg.Email) +
-		fmt.Sprintf("To: %s\r\n", to[0]) +
-		fmt.Sprintf("Subject: %s\r\n", subject) +
-		"\r\n" + // An empty line is required between headers and the body.
-		body
+	// Set up authentication information.
+	auth := smtp.PlainAuth("", cfg.Email, cfg.Password, smtpServer)
 
-	addr := smtpHost + ":" + smtpPort
-	return smtp.SendMail(addr, auth, cfg.Email, to, []byte(msg))
+	// Construct the full email message with proper headers.
+	headers := map[string]string{
+		"From":         cfg.Email,
+		"To":           to[0], // Assuming one recipient for the header display
+		"Subject":      subject,
+		"Message-ID":   generateMessageID(cfg.Email),
+		"Content-Type": "text/plain; charset=UTF-8", // Explicitly set content type
+	}
+
+	var msg string
+	for k, v := range headers {
+		msg += fmt.Sprintf("%s: %s\r\n", k, v)
+	}
+	msg += "\r\n" + body
+
+	// SMTP server address.
+	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
+
+	// Send the email.
+	err := smtp.SendMail(addr, auth, cfg.Email, to, []byte(msg))
+	return err
 }

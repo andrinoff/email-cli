@@ -1,120 +1,123 @@
 package fetcher
 
 import (
-	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"time"
 
 	"github.com/andrinoff/email-cli/config"
-	"github.com/emersion/go-imap/v2"
-	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-imap"
+	"github.com/emersion/go-imap/client"
+	"github.com/emersion/go-message/mail"
 )
 
-// Email struct holds the essential information for a single email.
 type Email struct {
 	From    string
+	To      []string
 	Subject string
 	Body    string
 	Date    time.Time
 }
 
-// FetchEmails connects to the email provider's IMAP server and retrieves the latest emails.
 func FetchEmails(cfg *config.Config) ([]Email, error) {
-	var imapHost, serverName string
+	var imapServer string
+	var imapPort int
+
+	// Determine the IMAP server based on the service provider in the config.
 	switch cfg.ServiceProvider {
 	case "gmail":
-		imapHost = "imap.gmail.com:993"
-		serverName = "imap.gmail.com"
+		imapServer = "imap.gmail.com"
+		imapPort = 993
 	case "icloud":
-		imapHost = "imap.mail.me.com:993"
-		serverName = "imap.mail.me.com"
+		imapServer = "imap.mail.me.com"
+		imapPort = 993
 	default:
-		return nil, fmt.Errorf("unsupported service provider: %s", cfg.ServiceProvider)
+		return nil, fmt.Errorf("unsupported or missing service_provider in config.json: %s", cfg.ServiceProvider)
 	}
 
-	options := imapclient.Options{
-		TLSConfig: &tls.Config{ServerName: serverName},
-	}
-	c, err := imapclient.DialTLS(imapHost, &options)
+	// Connect to the server
+	addr := fmt.Sprintf("%s:%d", imapServer, imapPort)
+	c, err := client.DialTLS(addr, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial IMAP server: %w", err)
+		return nil, err
 	}
-	defer c.Close()
+	log.Println("Connected")
+	defer c.Logout()
 
-	if err := c.Login(cfg.Email, cfg.Password).Wait(); err != nil {
-		return nil, fmt.Errorf("failed to login: %w", err)
+	// Login
+	if err := c.Login(cfg.Email, cfg.Password); err != nil {
+		return nil, err
 	}
+	log.Println("Logged in")
 
-	selectData, err := c.Select("INBOX", nil).Wait()
+	// Select INBOX
+	mbox, err := c.Select("INBOX", false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to select INBOX: %w", err)
-	}
-	numMessages := selectData.NumMessages
-
-	if numMessages == 0 {
-		return []Email{}, nil // No messages
+		return nil, err
 	}
 
-	start := uint32(1)
-	if numMessages > 10 {
-		start = numMessages - 9
+	// Get the last 10 messages
+	from := uint32(1)
+	to := mbox.Messages
+	if mbox.Messages > 10 {
+		from = mbox.Messages - 9
 	}
-	seqSet := imap.SeqSetNum(start, numMessages)
+	seqset := new(imap.SeqSet)
+	seqset.AddRange(from, to)
 
-	fetchOptions := &imap.FetchOptions{
-		Envelope: true,
-		BodySection: []*imap.FetchItemBodySection{
-			{Specifier: imap.PartSpecifierText},
-		},
-	}
-
-	cmd := c.Fetch(seqSet, fetchOptions)
+	messages := make(chan *imap.Message, 10)
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Fetch(seqset, []imap.FetchItem{imap.FetchItem("BODY[]")}, messages)
+	}()
 
 	var emails []Email
-	for {
-		msg := cmd.Next()
-		if msg == nil {
-			break
+	for msg := range messages {
+		r := msg.GetBody(&imap.BodySectionName{})
+		if r == nil {
+			log.Fatal("Server didn't return message body")
 		}
 
-		buf, err := msg.Collect()
+		mr, err := mail.CreateReader(r)
 		if err != nil {
-			log.Printf("failed to collect message data: %v", err)
-			continue
+			log.Fatal(err)
 		}
-		
-		var from, subject, body string
-		var date time.Time
 
-		if buf.Envelope != nil {
-			if len(buf.Envelope.From) > 0 {
-				from = buf.Envelope.From[0].Addr()
-			}
-			subject = buf.Envelope.Subject
-			date = buf.Envelope.Date
+		header := mr.Header
+		fromAddrs, _ := header.AddressList("From")
+		toAddrs, _ := header.AddressList("To")
+		subject, _ := header.Subject()
+		date, _ := header.Date()
+
+		var fromAddr string
+		if len(fromAddrs) > 0 {
+			fromAddr = fromAddrs[0].Address
 		}
-		
-		// Corrected: FindBodySection returns []byte, not io.Reader
-		if bodySection := buf.FindBodySection(&imap.FetchItemBodySection{Specifier: imap.PartSpecifierText}); bodySection != nil {
-			body = string(bodySection) // Directly convert []byte to string
+
+		var toAddrList []string
+		for _, addr := range toAddrs {
+			toAddrList = append(toAddrList, addr.Address)
 		}
+
+		p, err := mr.NextPart()
+		if err != nil && err != io.EOF {
+			log.Fatal(err)
+		}
+
+		body, _ := io.ReadAll(p.Body)
 
 		emails = append(emails, Email{
-			From:    from,
+			From:    fromAddr,
+			To:      toAddrList,
 			Subject: subject,
-			Body:    body,
+			Body:    string(body),
 			Date:    date,
 		})
 	}
 
-	if err := cmd.Close(); err != nil {
-		return nil, fmt.Errorf("FETCH command failed: %w", err)
-	}
-
-	// Reverse the slice to show the newest emails first
-	for i, j := 0, len(emails)-1; i < j; i, j = i+1, j-1 {
-		emails[i], emails[j] = emails[j], emails[i]
+	if err := <-done; err != nil {
+		return nil, err
 	}
 
 	return emails, nil
