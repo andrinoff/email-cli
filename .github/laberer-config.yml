@@ -1,0 +1,22 @@
+"bug":
+  - '\bbug(s)?\b'
+  - '\berror(s)?\b'
+  - '\bfix(es)?\b'
+  - '\bissue(s)?\b'
+  - '\bproblem(s)?\b'
+
+"enhancement":
+  - '\benhancement(s)?\b'
+  - '\bfeature(s)?\b'
+  - '\bidea(s)?\b'
+  - '\bsuggestion(s)?\b'
+
+"documentation":
+  - '\bdocumentation\b'
+  - '\bdocs\b'
+  - '\breadme\b'
+
+"question":
+  - '\bquestion(s)?\b'
+  - '\bhelp\b'
+  - '\bhow to\b'

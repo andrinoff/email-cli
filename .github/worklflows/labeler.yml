@@ -1,0 +1,17 @@
+name: Issue Labeler
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  label_issues:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Label issues
+        uses: github/issue-labeler@v1
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          configuration-path: .github/labeler-config.yml
+          not-before: "2023-01-01T00:00:00Z" # Optional: only run on new issues
