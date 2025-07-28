@@ -1,43 +1,57 @@
 package tui
 
 import (
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Styles for the UI
+var (
+	focusedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	blurredStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	cursorStyle         = focusedStyle.Copy()
+	noStyle             = lipgloss.NewStyle()
+	helpStyle           = blurredStyle.Copy()
+	focusedButton       = focusedStyle.Copy().Render("[ Send ]")
+	blurredButton       = blurredStyle.Copy().Render("[ Send ]")
+	emailRecipientStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+)
+
+// Composer model holds the state of the email composition UI.
 type Composer struct {
 	focusIndex int
-	inputs     []textinput.Model
+	toInput    textinput.Model
+	subjectInput textinput.Model
+	bodyInput  textarea.Model
 	fromAddr   string
 }
 
+// NewComposer initializes a new composer model.
 func NewComposer(from string) Composer {
-	m := Composer{
-		inputs:   make([]textinput.Model, 3),
-		fromAddr: from,
-	}
+	m := Composer{fromAddr: from}
 
-	var t textinput.Model
-	for i := range m.inputs {
-		t = textinput.New()
-		t.Cursor.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-		t.CharLimit = 0 // no limit
+	m.toInput = textinput.New()
+	m.toInput.Cursor.Style = cursorStyle
+	m.toInput.Placeholder = "To"
+	m.toInput.Focus()
+	m.toInput.Prompt = "> "
+	m.toInput.CharLimit = 256
 
-		switch i {
-		case 0:
-			t.Placeholder = "To"
-			t.Focus()
-			t.Prompt = "> "
-		case 1:
-			t.Placeholder = "Subject"
-			t.Prompt = "> "
-		case 2:
-			t.Placeholder = "Body..."
-			t.Prompt = "> "
-		}
-		m.inputs[i] = t
-	}
+	m.subjectInput = textinput.New()
+	m.subjectInput.Cursor.Style = cursorStyle
+	m.subjectInput.Placeholder = "Subject"
+	m.subjectInput.Prompt = "> "
+	m.subjectInput.CharLimit = 256
+
+	m.bodyInput = textarea.New()
+	m.bodyInput.Cursor.Style = cursorStyle
+	m.bodyInput.Placeholder = "Body..."
+	m.bodyInput.Prompt = "> "
+	m.bodyInput.SetHeight(10)
+	m.bodyInput.SetWidth(60)
+
 	return m
 }
 
@@ -46,68 +60,91 @@ func (m Composer) Init() tea.Cmd {
 }
 
 func (m Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		s := msg.String()
-		switch s {
-		case "tab", "shift+tab", "enter", "up", "down":
-			if s == "enter" {
-				// If we're on the last input, send the email
-				if m.focusIndex == len(m.inputs)-1 {
-					return m, func() tea.Msg {
-						return SendEmailMsg{
-							To:      m.inputs[0].Value(),
-							Subject: m.inputs[1].Value(),
-							Body:    m.inputs[2].Value(),
-						}
-					}
-				}
-			}
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			return m, tea.Quit
 
-			// Cycle focus
-			if s == "up" || s == "shift+tab" {
+		// Handle Tab and Shift+Tab to cycle focus between inputs.
+		case tea.KeyTab, tea.KeyShiftTab:
+			if msg.Type == tea.KeyShiftTab {
 				m.focusIndex--
 			} else {
 				m.focusIndex++
 			}
 
-			if m.focusIndex > len(m.inputs)-1 {
+			// Wrap around
+			if m.focusIndex > 3 { // 3 is the Send button
 				m.focusIndex = 0
 			} else if m.focusIndex < 0 {
-				m.focusIndex = len(m.inputs) - 1
+				m.focusIndex = 3
 			}
+			
+			// Blur all inputs
+			m.toInput.Blur()
+			m.subjectInput.Blur()
+			m.bodyInput.Blur()
 
-			cmds := make([]tea.Cmd, len(m.inputs))
-			for i := 0; i < len(m.inputs); i++ {
-				if i == m.focusIndex {
-					cmds[i] = m.inputs[i].Focus()
-				} else {
-					m.inputs[i].Blur()
-				}
+			// Focus the correct input
+			switch m.focusIndex {
+			case 0:
+				m.toInput.Focus()
+			case 1:
+				m.subjectInput.Focus()
+			case 2:
+				m.bodyInput.Focus()
 			}
 			return m, tea.Batch(cmds...)
+
+		// Handle Enter key.
+		case tea.KeyEnter:
+			// If on the Send button, send the email.
+			if m.focusIndex == 3 {
+				return m, func() tea.Msg {
+					return SendEmailMsg{
+						To:      m.toInput.Value(),
+						Subject: m.subjectInput.Value(),
+						Body:    m.bodyInput.Value(),
+					}
+				}
+			}
 		}
 	}
 
-	// Update the focused input
-	cmd := m.updateInputs(msg)
-	return m, cmd
-}
-
-func (m *Composer) updateInputs(msg tea.Msg) tea.Cmd {
-	var cmds = make([]tea.Cmd, len(m.inputs))
-	for i := range m.inputs {
-		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
+	// Update the focused input.
+	switch m.focusIndex {
+	case 0:
+		m.toInput, cmd = m.toInput.Update(msg)
+		cmds = append(cmds, cmd)
+	case 1:
+		m.subjectInput, cmd = m.subjectInput.Update(msg)
+		cmds = append(cmds, cmd)
+	case 2:
+		m.bodyInput, cmd = m.bodyInput.Update(msg)
+		cmds = append(cmds, cmd)
 	}
-	return tea.Batch(cmds...)
+
+	return m, tea.Batch(cmds...)
 }
 
+// View renders the UI.
 func (m Composer) View() string {
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		"Compose Email (Press Enter on Body to Send)",
-		m.inputs[0].View(),
-		m.inputs[1].View(),
-		m.inputs[2].View(),
+	button := &blurredButton
+	if m.focusIndex == 3 {
+		button = &focusedButton
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		"Compose New Email",
+		"From: "+emailRecipientStyle.Render(m.fromAddr),
+		m.toInput.View(),
+		m.subjectInput.View(),
+		m.bodyInput.View(),
+		*button,
+		helpStyle.Render("tab: next field • esc: quit"),
 	)
 }
