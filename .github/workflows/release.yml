@@ -28,10 +28,9 @@ jobs:
 
       - name: Automatic Tagging
         id: conventional-commits
-        uses: iM-vG/action-conventional-commits@v4
+        uses: webiny/action-conventional-commits@v1.3.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          command: "tag"
 
       - name: Run GoReleaser
         if: steps.conventional-commits.outputs.tag
