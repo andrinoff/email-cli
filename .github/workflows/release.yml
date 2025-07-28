@@ -33,7 +33,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run GoReleaser
-        if: steps.conventional-commits.outputs.tag
         uses: goreleaser/goreleaser-action@v5
         with:
           # GoReleaser will automatically use the latest version.
