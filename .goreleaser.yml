@@ -68,8 +68,6 @@ release:
   draft: false
   # If set to true, will mark the release as a pre-release.
   prerelease: auto
-  # Auto-generates the release notes from the changelog.
-  generate_release_notes: true
 
 # 'brews' configures the Homebrew tap integration.
 brews:
