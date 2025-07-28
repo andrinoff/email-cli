@@ -64,3 +64,17 @@ func LoadConfig() (*Config, error) {
 	}
 	return &config, nil
 }
+// IMAPServer returns the IMAP server address based on the service provider.
+// This is used to connect to the email provider's IMAP server.
+// It returns an empty string if the service provider is not supported.
+func (c *Config) IMAPServer() string {
+	switch c.ServiceProvider {
+	case "gmail":
+		return "imap.gmail.com"
+	case "icloud":
+		return "imap.mail.me.com"
+	// Add other providers here
+	default:
+		return ""
+	}
+}

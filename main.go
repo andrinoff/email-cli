@@ -31,9 +31,22 @@ func main() {
 		}
 	}
 
-	// Now that we have a config, run the main email composer UI
-	fmt.Printf("Logged in as %s. Starting email composer...\n", cfg.Email)
-	if err := tui.RunComposer(cfg); err != nil {
-		log.Fatalf("Application error: %v", err)
+	// Now that we have a config, let the user choose what to do
+	choice, err := tui.RunChoice()
+	if err != nil {
+		log.Fatalf("Could not run choice UI: %v", err)
+	}
+
+	switch choice {
+	case "send":
+		fmt.Printf("Logged in as %s. Starting email composer...\n", cfg.Email)
+		if err := tui.RunComposer(cfg); err != nil {
+			log.Fatalf("Application error: %v", err)
+		}
+	case "inbox":
+		fmt.Printf("Logged in as %s. Opening inbox...\n", cfg.Email)
+		if err := tui.RunInbox(cfg); err != nil {
+			log.Fatalf("Application error: %v", err)
+		}
 	}
 }
