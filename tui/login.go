@@ -12,10 +12,10 @@ type Login struct {
 	inputs     []textinput.Model
 }
 
-// NewLogin creates a new login model. This function was missing.
+// NewLogin creates a new login model.
 func NewLogin() tea.Model {
 	m := Login{
-		inputs: make([]textinput.Model, 2),
+		inputs: make([]textinput.Model, 4), // Increased to 4 for provider, name, email, and password
 	}
 
 	var t textinput.Model
@@ -26,10 +26,16 @@ func NewLogin() tea.Model {
 
 		switch i {
 		case 0:
-			t.Placeholder = "Email"
+			t.Placeholder = "Provider (gmail or icloud)"
 			t.Focus()
-			t.Prompt = "✉️ > "
+			t.Prompt = "☁️ > "
 		case 1:
+			t.Placeholder = "Name"
+			t.Prompt = "👤 > "
+		case 2:
+			t.Placeholder = "Email"
+			t.Prompt = "✉️ > "
+		case 3:
 			t.Placeholder = "Password"
 			t.EchoMode = textinput.EchoPassword
 			t.Prompt = "🔑 > "
@@ -55,8 +61,10 @@ func (m Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focusIndex == len(m.inputs)-1 {
 				return m, func() tea.Msg {
 					return Credentials{
-						Email:    m.inputs[0].Value(),
-						Password: m.inputs[1].Value(),
+						Provider: m.inputs[0].Value(),
+						Name:     m.inputs[1].Value(),
+						Email:    m.inputs[2].Value(),
+						Password: m.inputs[3].Value(),
 					}
 				}
 			}
@@ -103,6 +111,8 @@ func (m Login) View() string {
 		"Please enter your credentials.",
 		m.inputs[0].View(),
 		m.inputs[1].View(),
+		m.inputs[2].View(),
+		m.inputs[3].View(),
 		helpStyle.Render("\nenter: submit • tab: next field • esc: quit"),
 	)
 }

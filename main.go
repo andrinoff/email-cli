@@ -25,6 +25,12 @@ type mainModel struct {
 
 // newInitialModel now returns a pointer, which is crucial for state management.
 func newInitialModel(cfg *config.Config) *mainModel {
+	// If config is nil, it means we're starting from the login screen.
+	if cfg == nil {
+		return &mainModel{
+			current: tui.NewLogin(),
+		}
+	}
 	return &mainModel{
 		current: tui.NewChoice(),
 		config:  cfg,
@@ -61,6 +67,22 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	// --- Custom Messages for switching views ---
+	case tui.Credentials: // This is a struct, not a pointer
+		cfg := &config.Config{
+			ServiceProvider: msg.Provider,
+			Name:            msg.Name,
+			Email:           msg.Email,
+			Password:        msg.Password,
+		}
+		if err := config.SaveConfig(cfg); err != nil {
+			// TODO: Show an error message to the user
+			log.Printf("could not save config: %v", err)
+			return m, tea.Quit
+		}
+		m.config = cfg
+		m.current = tui.NewChoice()
+		cmds = append(cmds, m.current.Init())
+
 	case tui.GoToInboxMsg:
 		m.current = tui.NewStatus("Fetching emails...")
 		return m, tea.Batch(m.current.Init(), fetchEmails(m.config))
@@ -127,13 +149,15 @@ func fetchEmails(cfg *config.Config) tea.Cmd {
 
 func main() {
 	cfg, err := config.LoadConfig()
+	var initialModel *mainModel
 	if err != nil {
 		// If the config doesn't exist, we can guide the user to create one.
-		// For now, we'll just log a fatal error.
-		log.Fatalf("could not load config: %v", err)
+		initialModel = newInitialModel(nil)
+	} else {
+		initialModel = newInitialModel(cfg)
 	}
 
-	p := tea.NewProgram(newInitialModel(cfg), tea.WithAltScreen())
+	p := tea.NewProgram(initialModel, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)

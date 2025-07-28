@@ -16,6 +16,8 @@ type SendEmailMsg struct {
 
 // A message to indicate that the user has entered their credentials.
 type Credentials struct {
+	Provider string
+	Name     string
 	Email    string
 	Password string
 }
