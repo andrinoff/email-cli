@@ -6,7 +6,7 @@ on:
       - master
 
 permissions:
-  contents: write # to create releases and upload assets
+  contents: write # to create releases, tags and upload assets
   pull-requests: read # to read pull request titles and labels for changelog
   id-token: write # to sign the release
 
@@ -26,7 +26,15 @@ jobs:
         with:
           go-version: "1.24" # Match the Go version in go.mod
 
+      - name: Automatic Tagging
+        id: conventional-commits
+        uses: iM-vG/action-conventional-commits@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          command: "tag"
+
       - name: Run GoReleaser
+        if: steps.conventional-commits.outputs.tag
         uses: goreleaser/goreleaser-action@v5
         with:
           # GoReleaser will automatically use the latest version.
