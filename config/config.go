@@ -11,6 +11,7 @@ type Config struct {
 	ServiceProvider string `json:"service_provider"`
 	Email           string `json:"email"`
 	Password        string `json:"password"`
+	Name            string `json:"name"`
 }
 
 // configDir returns the path to the configuration directory.

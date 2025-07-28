@@ -20,7 +20,7 @@ type loginModel struct {
 
 func initialLoginModel() loginModel {
 	m := loginModel{
-		inputs: make([]textinput.Model, 3),
+		inputs: make([]textinput.Model, 4),
 	}
 
 	var t textinput.Model
@@ -45,6 +45,10 @@ func initialLoginModel() loginModel {
 			t.EchoMode = textinput.EchoPassword
 			t.EchoCharacter = '•'
 			t.CharLimit = 64
+		case 3:
+			t.Placeholder = "Name"
+			t.Prompt = "  "
+			t.CharLimit = 64
 		}
 		m.inputs[i] = t
 	}
@@ -67,6 +71,7 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					ServiceProvider: m.inputs[0].Value(),
 					Email:           m.inputs[1].Value(),
 					Password:        m.inputs[2].Value(),
+					Name: 		     m.inputs[3].Value(),
 				}
 				if err := config.SaveConfig(m.config); err != nil {
 					m.err = err

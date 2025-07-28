@@ -23,7 +23,7 @@ func SendEmail(cfg *config.Config, to []string, subject, body string) error {
 	}
 
 	auth := smtp.PlainAuth("", cfg.Email, cfg.Password, smtpHost)
-	msg := fmt.Sprintf("From: %s <%s>\r\n", "Some Name", cfg.Email) +
+	msg := fmt.Sprintf("From: %s <%s>\r\n", cfg.Name, cfg.Email) +
 		fmt.Sprintf("To: %s\r\n", to[0]) +
 		fmt.Sprintf("Subject: %s\r\n", subject) +
 		"\r\n" + // An empty line is required between headers and the body.
