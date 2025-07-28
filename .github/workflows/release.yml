@@ -32,6 +32,11 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Fetch the new tag
+        run: git fetch --tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run GoReleaser
         if: steps.tag_version.outputs.new_tag
         uses: goreleaser/goreleaser-action@v5
