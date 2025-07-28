@@ -120,5 +120,10 @@ func FetchEmails(cfg *config.Config) ([]Email, error) {
 		return nil, err
 	}
 
+	// Reverse the order of emails to be from newest to oldest.
+	for i, j := 0, len(emails)-1; i < j; i, j = i+1, j-1 {
+		emails[i], emails[j] = emails[j], emails[i]
+	}
+
 	return emails, nil
 }
