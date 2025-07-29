@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"github.com/andrinoff/email-cli/sender"
 	"github.com/andrinoff/email-cli/tui"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 // mainModel now holds the state for the entire application.
@@ -106,7 +109,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.current = tui.NewComposer(m.config.Email)
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
-	
+
 	case tui.GoToSettingsMsg:
 		m.current = tui.NewLogin()
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
@@ -137,11 +140,32 @@ func (m *mainModel) View() string {
 	return m.current.View()
 }
 
+// markdownToHTML converts a Markdown string to an HTML string.
+func markdownToHTML(md []byte) []byte {
+	var buf bytes.Buffer
+	p := goldmark.New(
+		goldmark.WithRendererOptions(
+			html.WithUnsafe(), // Allow raw HTML, which is useful in emails
+		),
+	)
+	if err := p.Convert(md, &buf); err != nil {
+		// As a fallback, just return the original markdown.
+		return md
+	}
+	return buf.Bytes()
+}
+
 // sendEmail is a command that sends an email in the background.
 func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 	return func() tea.Msg {
 		recipients := []string{msg.To}
-		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body)
+
+		// Convert markdown body to HTML
+		htmlBody := markdownToHTML([]byte(msg.Body))
+
+		// The original markdown body will serve as our plain text fallback.
+		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body, string(htmlBody))
+
 		if err != nil {
 			log.Printf("Failed to send email: %v", err) // Log error
 			return tui.EmailResultMsg{Err: err}

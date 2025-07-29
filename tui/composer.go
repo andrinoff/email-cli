@@ -46,7 +46,7 @@ func NewComposer(from string) *Composer {
 
 	m.bodyInput = textarea.New()
 	m.bodyInput.Cursor.Style = cursorStyle
-	m.bodyInput.Placeholder = "Body..."
+	m.bodyInput.Placeholder = "Body (Markdown supported)..."
 	m.bodyInput.Prompt = "> "
 	m.bodyInput.SetHeight(10)
 
@@ -151,6 +151,6 @@ func (m *Composer) View() string {
 		m.subjectInput.View(),
 		m.bodyInput.View(),
 		*button,
-		helpStyle.Render("tab: next field • esc: back to menu • enter: send"),
+		helpStyle.Render("Markdown enabled! • tab: next field • esc: back to menu"),
 	)
 }

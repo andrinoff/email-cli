@@ -1,32 +1,32 @@
 package sender
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
+	"mime/multipart"
 	"net/smtp"
+	"net/textproto"
 	"time"
 
 	"github.com/andrinoff/email-cli/config"
 )
 
 // generateMessageID creates a unique Message-ID header.
-// This is a crucial header for deliverability, as its absence is a spam indicator.
 func generateMessageID(from string) string {
-	// Generate a random part to ensure uniqueness
 	buf := make([]byte, 16)
 	_, err := rand.Read(buf)
 	if err != nil {
-		// Fallback to a less random but still unique value if crypto/rand fails
 		return fmt.Sprintf("<%d.%s>", time.Now().UnixNano(), from)
 	}
 	return fmt.Sprintf("<%x@%s>", buf, from)
 }
 
-func SendEmail(cfg *config.Config, to []string, subject, body string) error {
+// SendEmail now constructs a multipart message with both plain text and HTML parts.
+func SendEmail(cfg *config.Config, to []string, subject, plainBody, htmlBody string) error {
 	var smtpServer string
 	var smtpPort int
 
-	// Determine the SMTP server based on the service provider in the config.
 	switch cfg.ServiceProvider {
 	case "gmail":
 		smtpServer = "smtp.gmail.com"
@@ -38,35 +38,56 @@ func SendEmail(cfg *config.Config, to []string, subject, body string) error {
 		return fmt.Errorf("unsupported or missing service_provider in config.json: %s", cfg.ServiceProvider)
 	}
 
-	// Set up authentication information.
 	auth := smtp.PlainAuth("", cfg.Email, cfg.Password, smtpServer)
 
-	// Format the From header to include the sender's name.
 	fromHeader := cfg.Email
 	if cfg.Name != "" {
 		fromHeader = fmt.Sprintf("%s <%s>", cfg.Name, cfg.Email)
 	}
 
-	// Construct the full email message with proper headers.
+	// Create a new multipart message.
+	var msg bytes.Buffer
+	mw := multipart.NewWriter(&msg)
+
+	// Set top-level headers.
 	headers := map[string]string{
 		"From":         fromHeader,
-		"To":           to[0], // Assuming one recipient for the header display
+		"To":           to[0],
 		"Subject":      subject,
 		"Date":         time.Now().Format(time.RFC1123Z),
 		"Message-ID":   generateMessageID(cfg.Email),
-		"Content-Type": "text/plain; charset=UTF-8", // Explicitly set content type
+		"Content-Type": "multipart/alternative; boundary=" + mw.Boundary(),
 	}
-
-	var msg string
 	for k, v := range headers {
-		msg += fmt.Sprintf("%s: %s\r\n", k, v)
+		fmt.Fprintf(&msg, "%s: %s\r\n", k, v)
 	}
-	msg += "\r\n" + body
+	fmt.Fprintf(&msg, "\r\n") // End of headers
 
-	// SMTP server address.
+	// Create plain text part.
+	textHeader := textproto.MIMEHeader{}
+	textHeader.Set("Content-Type", "text/plain; charset=UTF-8")
+	textHeader.Set("Content-Transfer-Encoding", "quoted-printable")
+	part, err := mw.CreatePart(textHeader)
+	if err != nil {
+		return err
+	}
+	fmt.Fprint(part, plainBody)
+
+	// Create HTML part.
+	htmlHeader := textproto.MIMEHeader{}
+	htmlHeader.Set("Content-Type", "text/html; charset=UTF-8")
+	htmlHeader.Set("Content-Transfer-Encoding", "quoted-printable")
+	part, err = mw.CreatePart(htmlHeader)
+	if err != nil {
+		return err
+	}
+	fmt.Fprint(part, htmlBody)
+
+	// Close the multipart writer to write the final boundary.
+	if err := mw.Close(); err != nil {
+		return err
+	}
+
 	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
-
-	// Send the email.
-	err := smtp.SendMail(addr, auth, cfg.Email, to, []byte(msg))
-	return err
+	return smtp.SendMail(addr, auth, cfg.Email, to, msg.Bytes())
 }
