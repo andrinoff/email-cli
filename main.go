@@ -2,9 +2,13 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/andrinoff/email-cli/config"
@@ -12,11 +16,12 @@ import (
 	"github.com/andrinoff/email-cli/sender"
 	"github.com/andrinoff/email-cli/tui"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/google/uuid"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/renderer/html"
 )
 
-// mainModel now holds the state for the entire application.
+// mainModel holds the state for the entire application.
 type mainModel struct {
 	current tea.Model
 	config  *config.Config
@@ -27,9 +32,9 @@ type mainModel struct {
 	err     error
 }
 
-// newInitialModel now returns a pointer, which is crucial for state management.
+// newInitialModel returns a pointer to the initial model.
 func newInitialModel(cfg *config.Config) *mainModel {
-	// If config is nil, it means we're starting from the login screen.
+	// If config is nil, start with the login screen.
 	if cfg == nil {
 		return &mainModel{
 			current: tui.NewLogin(),
@@ -53,7 +58,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Pass the window size message to the current view
+		// Pass the window size message to the current view.
 		m.current, cmd = m.current.Update(msg)
 		cmds = append(cmds, cmd)
 		return m, tea.Batch(cmds...)
@@ -62,21 +67,20 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
-		// Allow ESC to go back
+		// Allow ESC to navigate back.
 		if msg.String() == "esc" {
-			// Check the type of the current view to decide where to go.
 			switch m.current.(type) {
 			case *tui.EmailView:
-				m.current = m.inbox // Go back to the cached inbox
+				m.current = m.inbox // Go back to the cached inbox.
 				return m, nil
 			case *tui.Inbox, *tui.Composer, *tui.Login:
-				m.current = tui.NewChoice() // Go back to the main menu
+				m.current = tui.NewChoice() // Go back to the main menu.
 				return m, m.current.Init()
 			}
 		}
 
-	// --- Custom Messages for switching views ---
-	case tui.Credentials: // This is a struct, not a pointer
+	// --- Custom Messages for Switching Views ---
+	case tui.Credentials:
 		cfg := &config.Config{
 			ServiceProvider: msg.Provider,
 			Name:            msg.Name,
@@ -84,7 +88,6 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Password:        msg.Password,
 		}
 		if err := config.SaveConfig(cfg); err != nil {
-			// TODO: Show an error message to the user
 			log.Printf("could not save config: %v", err)
 			return m, tea.Quit
 		}
@@ -100,12 +103,11 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.emails = msg.Emails
 		m.inbox = tui.NewInbox(m.emails)
 		m.current = m.inbox
-		// Manually set the size of the new view
+		// Manually set the size of the new view.
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
 
 	case tui.GoToSendMsg:
-		// NewComposer now returns *Composer, so we assign it directly.
 		m.current = tui.NewComposer(m.config.Email)
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
@@ -129,7 +131,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.current.Init())
 	}
 
-	// Pass all other messages to the current view
+	// Pass all other messages to the current view.
 	m.current, cmd = m.current.Update(msg)
 	cmds = append(cmds, cmd)
 
@@ -145,36 +147,53 @@ func markdownToHTML(md []byte) []byte {
 	var buf bytes.Buffer
 	p := goldmark.New(
 		goldmark.WithRendererOptions(
-			html.WithUnsafe(), // Allow raw HTML, which is useful in emails
+			html.WithUnsafe(), // Allow raw HTML in email.
 		),
 	)
 	if err := p.Convert(md, &buf); err != nil {
-		// As a fallback, just return the original markdown.
-		return md
+		return md // Fallback to original markdown.
 	}
 	return buf.Bytes()
 }
 
-// sendEmail is a command that sends an email in the background.
+// sendEmail finds local image paths, embeds them, and sends the email.
 func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 	return func() tea.Msg {
 		recipients := []string{msg.To}
+		body := msg.Body
+		images := make(map[string][]byte)
 
-		// Convert markdown body to HTML
-		htmlBody := markdownToHTML([]byte(msg.Body))
+		// Find all markdown image tags.
+		re := regexp.MustCompile(`!\[.*?\]\((.*?)\)`)
+		matches := re.FindAllStringSubmatch(body, -1)
 
-		// The original markdown body will serve as our plain text fallback.
-		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body, string(htmlBody))
+		for _, match := range matches {
+			imgPath := match[1]
+			imgData, err := os.ReadFile(imgPath) // Use os.ReadFile.
+			if err != nil {
+				log.Printf("Could not read image file %s: %v", imgPath, err)
+				continue
+			}
 
+			// Create a unique CID that includes the file extension.
+			cid := fmt.Sprintf("%s%s@%s", uuid.NewString(), filepath.Ext(imgPath), "email-cli")
+			images[cid] = []byte(base64.StdEncoding.EncodeToString(imgData))
+			body = strings.Replace(body, imgPath, "cid:"+cid, 1)
+		}
+
+		htmlBody := markdownToHTML([]byte(body))
+
+		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body, string(htmlBody), images)
 		if err != nil {
-			log.Printf("Failed to send email: %v", err) // Log error
+			log.Printf("Failed to send email: %v", err)
 			return tui.EmailResultMsg{Err: err}
 		}
-		time.Sleep(1 * time.Second) // Give user time to see the "Sending" message
+		time.Sleep(1 * time.Second)
 		return tui.EmailResultMsg{}
 	}
 }
 
+// fetchEmails retrieves emails in the background.
 func fetchEmails(cfg *config.Config) tea.Cmd {
 	return func() tea.Msg {
 		emails, err := fetcher.FetchEmails(cfg)
@@ -189,7 +208,6 @@ func main() {
 	cfg, err := config.LoadConfig()
 	var initialModel *mainModel
 	if err != nil {
-		// If the config doesn't exist, we can guide the user to create one.
 		initialModel = newInitialModel(nil)
 	} else {
 		initialModel = newInitialModel(cfg)
