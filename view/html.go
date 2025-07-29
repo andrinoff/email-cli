@@ -1,6 +1,7 @@
 package view
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"mime/quotedprintable"
@@ -8,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 // hyperlink formats a string as a terminal-clickable hyperlink.
@@ -27,6 +30,20 @@ func decodeQuotedPrintable(s string) (string, error) {
 	return string(body), nil
 }
 
+// markdownToHTML converts a Markdown string to an HTML string.
+func markdownToHTML(md []byte) []byte {
+	var buf bytes.Buffer
+	p := goldmark.New(
+		goldmark.WithRendererOptions(
+			html.WithUnsafe(), // Allow raw HTML in email.
+		),
+	)
+	if err := p.Convert(md, &buf); err != nil {
+		return md // Fallback to original markdown.
+	}
+	return buf.Bytes()
+}
+
 // ProcessBody takes a raw email body, decodes it, and formats it as plain
 // text with terminal hyperlinks.
 func ProcessBody(rawBody string) (string, error) {
@@ -36,7 +53,10 @@ func ProcessBody(rawBody string) (string, error) {
 		decodedBody = rawBody
 	}
 
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(decodedBody))
+	// Convert markdown to HTML before processing
+	htmlBody := markdownToHTML([]byte(decodedBody))
+
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(htmlBody))
 	if err != nil {
 		return "", fmt.Errorf("could not parse email body: %w", err)
 	}
@@ -63,7 +83,7 @@ func ProcessBody(rawBody string) (string, error) {
 		s.ReplaceWithHtml(hyperlink(href, s.Text()))
 	})
 
-	// Get the text content, which now includes our formatting
+	// Get the document's text content, which now includes our formatting
 	text := doc.Text()
 
 	// Collapse more than 2 consecutive newlines into 2
