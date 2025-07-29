@@ -1,7 +1,7 @@
 # This is the configuration file for GoReleaser.
 # It defines how your project should be built, packaged, and released.
 # For more information, see: https://goreleaser.com/customization/
-version: 2
+version: 1
 
 # The 'before' hook runs commands before the build process starts.
 before:
@@ -69,19 +69,39 @@ release:
   # If set to true, will mark the release as a pre-release.
   prerelease: auto
 
+# 'brews' configures the Homebrew tap integration.
 brews:
-  - name: email-cli
+  - # The configuration for your Homebrew tap.
+    # The name of your formula file will be 'email-cli.rb'.
+    name: email-cli
+    # The GitHub repository for your Homebrew tap.
     tap:
       owner: andrinoff
       name: homebrew-email-cli
+      # The token to use for pushing to the tap repository.
+      # It uses the secret you'll create in your repository settings.
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+
+    # The commit author for the tap update.
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
+
+    # A description for your formula.
     description: "A beautiful and functional email client for your terminal."
+    # The homepage URL for your formula.
     homepage: "https://github.com/andrinoff/email-cli"
+
+    # The dependencies for your formula.
+    # Since it's a pre-compiled binary, there are no runtime dependencies.
     dependencies: []
+
+    # The test block for your formula.
+    # This command will be run by `brew test email-cli`.
     test: |
       system "#{bin}/email-cli --version"
+
+    # The installation instructions for your formula.
+    # This tells Homebrew to just install the binary.
     install: |
       bin.install "email-cli"
