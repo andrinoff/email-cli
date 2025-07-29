@@ -1,8 +1,6 @@
 # Email CLI 📧
 
-[![Go CI](https://github.com/andrinoff/email-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/andrinoff/email-cli/actions/workflows/ci.yml)
-[![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/issues)
-
+[![Go CI](https://github.com/andrinoff/email-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/andrinoff/email-cli/actions/workflows/ci.yml) [![Go Release](https://github.com/andrinoff/email-cli/actions/workflows/release.yml/badge.svg)](https://github.com/andrinoff/email-cli/actions/workflows/release.yml) [![GitHub issues](https://img.shields.io/github/issues/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/issues) [![GitHub stars](https://img.shields.io/github/stars/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/stargazers)
 
 A beautiful and functional email client for your terminal, built with Go and the charming Bubble Tea TUI library. Never leave your command line to check your inbox or send an email again!
 
@@ -15,59 +13,54 @@ A beautiful and functional email client for your terminal, built with Go and the
 - **Compose and Send**: A simple and intuitive interface for writing and sending new emails.
 - **Beautiful TUI**: A clean and modern terminal user interface that's a pleasure to use.
 - **Secure**: Uses a local configuration file to store your credentials securely.
+- **Supported Providers**: Works with Gmail and iCloud.
 
 ## Getting Started 🚀
 
-Follow these instructions to get the email client up and running on your local machine.
+### Installation via Homebrew 🍺 (MacOS & Linux)
 
-### Prerequisites
+To install Email CLI using Homebrew, run the following commands:
 
-- **Go**: You need to have Go (version 1.18 or newer) installed on your system. You can download it from the [official Go website](https://golang.org/dl/).
+```bash
+brew tap andrinoff/email-cli
+brew install email-cli
+```
 
-### Installation & Setup
+After installation, run:
 
-1.  **Clone the repository:**
+```bash
+email-cli
+```
+
+to get started.
+
+### Build from Source 🔨
+
+Email CLI is written in **Go**. To build it manually:
+
+1.  Ensure you have Go installed (`go version`).
+2.  Clone the repository:
 
     ```bash
-    git clone [https://github.com/andrinoff/email-cli.git](https://github.com/andrinoff/email-cli.git)
+    git clone https://github.com/andrinoff/email-cli.git
+    ```
+
+3.  Navigate to the project folder:
+
+    ```bash
     cd email-cli
     ```
 
-2.  Login
+4.  Build the binary:
 
-    You will have 4 input fields
-
-    1. Provider (currently, `gmail` or `icloud`)
-    2. Email
-    3. App-specific Password (TODO: add a guide)
-    4. Name to sign off (OPTIONAL, but recommended)
-
-3.  **Run the application:**
-    Once your `config.json` file is set up, you can run the application directly from your terminal:
     ```bash
-    go run .
+    go build -o email-cli
     ```
 
-## Usage ⌨️
-
-The Email CLI is designed to be intuitive and easy to navigate with your keyboard.
-
-- **Main Menu**: Use the `Up`/`Down` arrow keys or `k`/`j` to navigate the main menu choices. Press `Enter` to select an option.
-- **Inbox View**: In the inbox, use the arrow keys to scroll through your emails. Press `Enter` to open and view a selected email.
-- **Composer**:
-  - Use `Tab` or the arrow keys to move between the "To", "Subject", and "Body" fields.
-  - When you are finished composing your email, navigate to the "Body" field and press `Enter` to send it.
-- **Go Back/Quit**:
-  - Press `Esc` from any view to return to the main menu.
-  - Press `Ctrl+C` at any time to quit the application.
-
-## Built With 🛠️
-
-This project is built with some fantastic Go libraries:
-
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) - A powerful TUI (Text User Interface) framework.
-- [Lipgloss](https://github.com/charmbracelet/lipgloss) - A library for beautiful, style-driven layouts in the terminal.
-- [Bubbles](https://github.com/charmbracelet/bubbles) - A collection of ready-to-use components for Bubble Tea applications.
+5.  Run it:
+    ```bash
+    ./email-cli
+    ```
 
 ## License 📄
 
