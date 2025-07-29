@@ -105,27 +105,6 @@ brews:
     # This tells Homebrew to just install the binary.
     install: |
       bin.install "email-cli"
-nfpms:
-  - # ID of the nfpm config, must be unique.
-    id: email-cli-btea
-    # Name of the package.
-    package_name: email-cli
-    # Version of the package.
-    # Defaults to the project's version.
-    version: "{{ .Version }}"
-    # Maintainer of the package.
-    maintainer: "Drew Smirnoff <me@andrinoff.com>"
-    # Description of the package.
-    description: "A beautiful and functional email client for your terminal."
-    # Homepage of the package.
-    homepage: "https://github.com/andrinoff/email-cli"
-    # License of the package.
-    license: MIT
-    # Formats to generate.
-    formats:
-      - deb # For apt
-      - rpm # For yum/dnf
-    # Files to include in the package.
-    contents:
-      - src: ./email-cli
-        dst: /usr/local/bin/email-cli
+snapcrafts:
+  - name: email-cli
+    publish: true
