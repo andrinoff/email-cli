@@ -51,14 +51,17 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < 1 { // We have two choices
+			if m.cursor < 2 { // We have three choices now
 				m.cursor++
 			}
 		case "enter":
-			if m.cursor == 0 {
+			switch m.cursor {
+			case 0:
 				return m, func() tea.Msg { return GoToInboxMsg{} }
-			} else if m.cursor == 1 {
+			case 1:
 				return m, func() tea.Msg { return GoToSendMsg{} }
+			case 2:
+				return m, func() tea.Msg { return GoToSettingsMsg{} }
 			}
 		}
 	}
@@ -76,7 +79,7 @@ func (m Choice) View() string {
 	b.WriteString("\n\n")
 
 	// Choices
-	choices := []string{"View Inbox", "Compose Email"}
+	choices := []string{"View Inbox", "Compose Email", "Settings"}
 	for i, choice := range choices {
 		if m.cursor == i {
 			b.WriteString(selectedItemStyle.Render(fmt.Sprintf("> %s", choice)))

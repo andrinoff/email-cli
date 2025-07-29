@@ -66,7 +66,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case *tui.EmailView:
 				m.current = m.inbox // Go back to the cached inbox
 				return m, nil
-			case *tui.Inbox, *tui.Composer:
+			case *tui.Inbox, *tui.Composer, *tui.Login:
 				m.current = tui.NewChoice() // Go back to the main menu
 				return m, m.current.Init()
 			}
@@ -104,6 +104,11 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.GoToSendMsg:
 		// NewComposer now returns *Composer, so we assign it directly.
 		m.current = tui.NewComposer(m.config.Email)
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		cmds = append(cmds, m.current.Init())
+	
+	case tui.GoToSettingsMsg:
+		m.current = tui.NewLogin()
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
 

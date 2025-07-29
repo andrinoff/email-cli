@@ -107,12 +107,12 @@ func (m Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the login form.
 func (m Login) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left,
-		titleStyle.Render("Welcome to Email CLI"),
-		"Please enter your credentials.",
+		titleStyle.Render("Account Settings"),
+		"Update your credentials.",
 		m.inputs[0].View(),
 		m.inputs[1].View(),
 		m.inputs[2].View(),
 		m.inputs[3].View(),
-		helpStyle.Render("\nenter: submit • tab: next field • esc: quit"),
+		helpStyle.Render("\nenter: save • tab: next field • esc: back to menu"),
 	)
 }

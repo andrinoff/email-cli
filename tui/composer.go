@@ -145,6 +145,6 @@ func (m *Composer) View() string {
 		m.subjectInput.View(),
 		m.bodyInput.View(),
 		*button,
-		helpStyle.Render("tab: next field • esc: back to menu"),
+		helpStyle.Render("tab: next field • esc: back to menu • enter: send"),
 	)
 }

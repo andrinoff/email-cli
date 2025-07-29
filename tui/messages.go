@@ -49,3 +49,6 @@ type GoToInboxMsg struct{}
 
 // A message to navigate to the composer view.
 type GoToSendMsg struct{}
+
+// A message to navigate to the settings view.
+type GoToSettingsMsg struct{}
