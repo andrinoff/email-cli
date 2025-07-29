@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"mime/quotedprintable"
+	"regexp"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -62,6 +63,12 @@ func ProcessBody(rawBody string) (string, error) {
 		s.ReplaceWithHtml(hyperlink(href, s.Text()))
 	})
 
-	// Return the document's text content, which now includes our formatting
-	return doc.Text(), nil
+	// Get the text content, which now includes our formatting
+	text := doc.Text()
+
+	// Collapse more than 2 consecutive newlines into 2
+	re := regexp.MustCompile(`\n{3,}`)
+	text = re.ReplaceAllString(text, "\n\n")
+
+	return text, nil
 }
