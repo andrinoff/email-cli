@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/andrinoff/email-cli/fetcher"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -15,10 +16,10 @@ var (
 	inboxHelpStyle  = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
 )
 
-// item now holds its original index from the main email slice.
 type item struct {
 	title, desc   string
 	originalIndex int
+	uid           uint32 // Added UID to item
 }
 
 func (i item) Title() string       { return i.title }
@@ -48,7 +49,6 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	fmt.Fprint(w, fn(str))
 }
 
-// Inbox is now stateful to handle pagination.
 type Inbox struct {
 	list        list.Model
 	isFetching  bool
@@ -61,7 +61,8 @@ func NewInbox(emails []fetcher.Email) *Inbox {
 		items[i] = item{
 			title:         email.Subject,
 			desc:          email.From,
-			originalIndex: i, // Store the original index here.
+			originalIndex: i,
+			uid:           email.UID, // Store UID
 		}
 	}
 
@@ -73,6 +74,12 @@ func NewInbox(emails []fetcher.Email) *Inbox {
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = inboxHelpStyle
 	l.SetStatusBarItemName("email", "emails")
+	l.AdditionalShortHelpKeys = func() []key.Binding {
+		return []key.Binding{
+			key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
+			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
+		}
+	}
 
 	return &Inbox{
 		list:        l,
@@ -90,13 +97,28 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		// When the user presses enter, we look at the selected item and send
-		// a message with its *original* index.
-		if msg.String() == "enter" {
+		if m.list.FilterState() == list.Filtering {
+			break
+		}
+		switch keypress := msg.String(); keypress {
+		case "d":
 			selectedItem, ok := m.list.SelectedItem().(item)
 			if ok {
 				return m, func() tea.Msg {
-					// Use the stored original index, which is correct even when filtered.
+					return DeleteEmailMsg{UID: selectedItem.uid}
+				}
+			}
+		case "a":
+			selectedItem, ok := m.list.SelectedItem().(item)
+			if ok {
+				return m, func() tea.Msg {
+					return ArchiveEmailMsg{UID: selectedItem.uid}
+				}
+			}
+		case "enter":
+			selectedItem, ok := m.list.SelectedItem().(item)
+			if ok {
+				return m, func() tea.Msg {
 					return ViewEmailMsg{Index: selectedItem.originalIndex}
 				}
 			}
@@ -118,7 +140,8 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			newItems[i] = item{
 				title:         email.Subject,
 				desc:          email.From,
-				originalIndex: m.emailsCount + i, // The original index continues to grow.
+				originalIndex: m.emailsCount + i,
+				uid:           email.UID,
 			}
 		}
 		currentItems := m.list.Items()
@@ -129,26 +152,14 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	}
 
-	// Infinite scroll logic
 	if !m.isFetching && len(m.list.Items()) > 0 && m.list.Index() >= len(m.list.Items())-5 {
 		cmds = append(cmds, func() tea.Msg {
 			return FetchMoreEmailsMsg{Offset: uint32(m.emailsCount)}
 		})
 	}
 
-	// New logic to fetch more emails when filtering is active
-	if m.list.FilterState() == list.Filtering && !m.isFetching {
-		m.isFetching = true
-		m.list.Title = "Fetching more emails..."
-		cmds = append(cmds, func() tea.Msg {
-			return FetchMoreEmailsMsg{Offset: uint32(m.emailsCount)}
-		})
-	}
-
 	var cmd tea.Cmd
-	var newModel list.Model
-	newModel, cmd = m.list.Update(msg)
-	m.list = newModel
+	m.list, cmd = m.list.Update(msg)
 	cmds = append(cmds, cmd)
 	return m, tea.Batch(cmds...)
 }

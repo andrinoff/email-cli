@@ -18,12 +18,13 @@ import (
 )
 
 type Email struct {
-	From      string
-	To        []string
-	Subject   string
-	Body      string
-	Date      time.Time
-	MessageID string
+	UID        uint32 // Added UID to uniquely identify emails
+	From       string
+	To         []string
+	Subject    string
+	Body       string
+	Date       time.Time
+	MessageID  string
 	References []string
 }
 
@@ -34,7 +35,7 @@ func decodePart(reader io.Reader, header mail.PartHeader) (string, error) {
 		return string(body), nil
 	}
 
-	charset := "utf-8" // Default charset
+	charset := "utf-8"
 	if params["charset"] != "" {
 		charset = strings.ToLower(params["charset"])
 	}
@@ -73,8 +74,8 @@ func decodeHeader(header string) string {
 	return decoded
 }
 
-// FetchEmails now supports pagination with a limit and offset.
-func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
+// connect initializes a connection to the IMAP server.
+func connect(cfg *config.Config) (*client.Client, error) {
 	var imapServer string
 	var imapPort int
 
@@ -86,7 +87,7 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		imapServer = "imap.mail.me.com"
 		imapPort = 993
 	default:
-		return nil, fmt.Errorf("unsupported or missing service_provider in config.json: %s", cfg.ServiceProvider)
+		return nil, fmt.Errorf("unsupported service_provider: %s", cfg.ServiceProvider)
 	}
 
 	addr := fmt.Sprintf("%s:%d", imapServer, imapPort)
@@ -94,20 +95,26 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Connected")
-	defer c.Logout()
 
 	if err := c.Login(cfg.Email, cfg.Password); err != nil {
 		return nil, err
 	}
-	log.Println("Logged in")
+
+	return c, nil
+}
+
+func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
+	c, err := connect(cfg)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Logout()
 
 	mbox, err := c.Select("INBOX", false)
 	if err != nil {
 		return nil, err
 	}
 
-	// Handle pagination logic
 	if mbox.Messages == 0 {
 		return []Email{}, nil
 	}
@@ -119,7 +126,7 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 	}
 
 	if to < 1 {
-		return []Email{}, nil // No more messages to fetch
+		return []Email{}, nil
 	}
 
 	seqset := new(imap.SeqSet)
@@ -127,8 +134,9 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 
 	messages := make(chan *imap.Message, limit)
 	done := make(chan error, 1)
+	fetchItems := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchItem("BODY[]")}
 	go func() {
-		done <- c.Fetch(seqset, []imap.FetchItem{imap.FetchEnvelope, imap.FetchItem("BODY[]")}, messages)
+		done <- c.Fetch(seqset, fetchItems, messages)
 	}()
 
 	var emails []Email
@@ -188,6 +196,7 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		}
 
 		emails = append(emails, Email{
+			UID:        msg.Uid,
 			From:       fromAddr,
 			To:         toAddrList,
 			Subject:    subject,
@@ -207,4 +216,46 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 	}
 
 	return emails, nil
+}
+
+// moveEmail moves an email to a specified destination mailbox.
+func moveEmail(cfg *config.Config, uid uint32, destMailbox string) error {
+	c, err := connect(cfg)
+	if err != nil {
+		return err
+	}
+	defer c.Logout()
+
+	if _, err := c.Select("INBOX", false); err != nil {
+		return err
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	return c.UidMove(seqSet, destMailbox)
+}
+
+// DeleteEmail moves an email to the trash folder.
+func DeleteEmail(cfg *config.Config, uid uint32) error {
+	var trashMailbox string
+	switch cfg.ServiceProvider {
+	case "gmail":
+		trashMailbox = "[Gmail]/Trash"
+	default:
+		trashMailbox = "Trash"
+	}
+	return moveEmail(cfg, uid, trashMailbox)
+}
+
+// ArchiveEmail moves an email to the archive folder.
+func ArchiveEmail(cfg *config.Config, uid uint32) error {
+	var archiveMailbox string
+	switch cfg.ServiceProvider {
+	case "gmail":
+		archiveMailbox = "[Gmail]/All Mail"
+	default:
+		archiveMailbox = "Archive"
+	}
+	return moveEmail(cfg, uid, archiveMailbox)
 }

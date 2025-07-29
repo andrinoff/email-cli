@@ -26,10 +26,9 @@ const (
 	paginationLimit   = 20
 )
 
-// mainModel holds the state for the entire application.
 type mainModel struct {
 	current       tea.Model
-	previousModel tea.Model // To store the view before opening the file picker
+	previousModel tea.Model
 	config        *config.Config
 	emails        []fetcher.Email
 	inbox         *tui.Inbox
@@ -38,7 +37,6 @@ type mainModel struct {
 	err           error
 }
 
-// newInitialModel returns a pointer to the initial model.
 func newInitialModel(cfg *config.Config) *mainModel {
 	if cfg == nil {
 		return &mainModel{
@@ -72,7 +70,6 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if msg.String() == "esc" {
-			// If we are in a nested view like email or file picker, handle it here
 			switch m.current.(type) {
 			case *tui.EmailView:
 				m.current = m.inbox
@@ -154,10 +151,8 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tui.FileSelectedMsg:
 		if m.previousModel != nil {
-			// Send the selection message to the previous model (the composer)
 			m.previousModel, cmd = m.previousModel.Update(msg)
 			cmds = append(cmds, cmd)
-			// Return to the composer view
 			m.current = m.previousModel
 			m.previousModel = nil
 		}
@@ -177,6 +172,36 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.EmailResultMsg:
 		m.current = tui.NewChoice()
 		cmds = append(cmds, m.current.Init())
+
+	case tui.DeleteEmailMsg:
+		m.current = tui.NewStatus("Deleting email...")
+		cmds = append(cmds, m.current.Init(), deleteEmailCmd(m.config, msg.UID))
+
+	case tui.ArchiveEmailMsg:
+		m.current = tui.NewStatus("Archiving email...")
+		cmds = append(cmds, m.current.Init(), archiveEmailCmd(m.config, msg.UID))
+
+	case tui.EmailActionDoneMsg:
+		if msg.Err != nil {
+			// In a real app, you might show an error message.
+			// For now, we'll just go back to the inbox.
+			log.Printf("Action failed: %v", msg.Err)
+			m.current = m.inbox
+			return m, nil
+		}
+		// Remove the email from the local cache
+		var updatedEmails []fetcher.Email
+		for _, email := range m.emails {
+			if email.UID != msg.UID {
+				updatedEmails = append(updatedEmails, email)
+			}
+		}
+		m.emails = updatedEmails
+		// Refresh the inbox view
+		m.inbox = tui.NewInbox(m.emails)
+		m.current = m.inbox
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
 	}
 
 	m.current, cmd = m.current.Update(msg)
@@ -256,6 +281,20 @@ func fetchEmails(cfg *config.Config, limit, offset uint32) tea.Cmd {
 			return tui.EmailsFetchedMsg{Emails: emails}
 		}
 		return tui.EmailsAppendedMsg{Emails: emails}
+	}
+}
+
+func deleteEmailCmd(cfg *config.Config, uid uint32) tea.Cmd {
+	return func() tea.Msg {
+		err := fetcher.DeleteEmail(cfg, uid)
+		return tui.EmailActionDoneMsg{UID: uid, Err: err}
+	}
+}
+
+func archiveEmailCmd(cfg *config.Config, uid uint32) tea.Cmd {
+	return func() tea.Msg {
+		err := fetcher.ArchiveEmail(cfg, uid)
+		return tui.EmailActionDoneMsg{UID: uid, Err: err}
 	}
 }
 
