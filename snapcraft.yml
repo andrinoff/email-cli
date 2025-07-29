@@ -1,0 +1,23 @@
+name: email-cli
+base: core22 # The base snap for a modern Ubuntu LTS
+version: "0.1" # This will be replaced by GoReleaser or can be set manually
+summary: A beautiful and functional email client for your terminal.
+description: |
+  A beautiful and functional email client for your terminal, built with Go and the charming Bubble Tea TUI library.
+  Never leave your command line to check your inbox or send an email again!
+
+grade: stable # must be 'stable' to release into candidate, stable channels
+confinement: strict # use 'strict' confinement for security
+
+apps:
+  email-cli:
+    command: bin/email-cli
+    plugs:
+      - network # Required for network access
+      - home # To access the user's home directory for config files
+
+parts:
+  email-cli:
+    plugin: go
+    source: .
+    go-importpath: github.com/andrinoff/email-cli
