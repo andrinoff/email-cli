@@ -26,29 +26,29 @@ const (
 	paginationLimit   = 20
 )
 
-// mainModel holds the state for the entire application.
 type mainModel struct {
-	current tea.Model
-	config  *config.Config
-	emails  []fetcher.Email
-	inbox   *tui.Inbox
-	width   int
-	height  int
-	err     error
+	current        tea.Model
+	previousModel  tea.Model
+	cachedComposer *tui.Composer // To cache a discarded draft
+	config         *config.Config
+	emails         []fetcher.Email
+	inbox          *tui.Inbox
+	width          int
+	height         int
+	err            error
 }
 
-// newInitialModel returns a pointer to the initial model.
 func newInitialModel(cfg *config.Config) *mainModel {
-	// If config is nil, start with the login screen.
+	// Determine if there is a cached composer to pass to the initial choice view
+	hasCache := false
+	initialModel := &mainModel{}
 	if cfg == nil {
-		return &mainModel{
-			current: tui.NewLogin(),
-		}
+		initialModel.current = tui.NewLogin()
+	} else {
+		initialModel.current = tui.NewChoice(hasCache)
+		initialModel.config = cfg
 	}
-	return &mainModel{
-		current: tui.NewChoice(),
-		config:  cfg,
-	}
+	return initialModel
 }
 
 func (m *mainModel) Init() tea.Cmd {
@@ -59,32 +59,50 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
+	m.current, cmd = m.current.Update(msg)
+	cmds = append(cmds, cmd)
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Pass the window size message to the current view.
-		m.current, cmd = m.current.Update(msg)
-		cmds = append(cmds, cmd)
-		return m, tea.Batch(cmds...)
+		return m, nil
 
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
-		// Allow ESC to navigate back.
 		if msg.String() == "esc" {
 			switch m.current.(type) {
-			case *tui.EmailView:
-				m.current = m.inbox // Go back to the cached inbox.
-				return m, nil
-			case *tui.Inbox, *tui.Composer, *tui.Login:
-				m.current = tui.NewChoice() // Go back to the main menu.
+			case *tui.FilePicker:
+				return m, func() tea.Msg { return tui.CancelFilePickerMsg{} }
+			case *tui.Inbox, *tui.Login:
+				m.current = tui.NewChoice(m.cachedComposer != nil)
 				return m, m.current.Init()
 			}
 		}
 
-	// --- Custom Messages for Switching Views and Pagination ---
+	case tui.BackToInboxMsg:
+		if m.inbox != nil {
+			m.current = m.inbox
+		} else {
+			m.current = tui.NewChoice(m.cachedComposer != nil)
+		}
+		return m, nil
+
+	case tui.DiscardDraftMsg:
+		m.cachedComposer = msg.ComposerState
+		m.current = tui.NewChoice(true) // Now there is a cached draft
+		return m, m.current.Init()
+
+	case tui.RestoreDraftMsg:
+		if m.cachedComposer != nil {
+			m.current = m.cachedComposer
+			m.cachedComposer.ResetConfirmation()
+			m.cachedComposer = nil // Clear cache after restoring
+			return m, m.current.Init()
+		}
+
 	case tui.Credentials:
 		cfg := &config.Config{
 			ServiceProvider: msg.Provider,
@@ -97,8 +115,8 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		m.config = cfg
-		m.current = tui.NewChoice()
-		cmds = append(cmds, m.current.Init())
+		m.current = tui.NewChoice(m.cachedComposer != nil)
+		return m, m.current.Init()
 
 	case tui.GoToInboxMsg:
 		m.current = tui.NewStatus("Fetching emails...")
@@ -108,49 +126,119 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.emails = msg.Emails
 		m.inbox = tui.NewInbox(m.emails)
 		m.current = m.inbox
-		// Manually set the size of the new view.
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
-		cmds = append(cmds, m.current.Init())
+		return m, m.current.Init()
 
 	case tui.FetchMoreEmailsMsg:
-		cmds = append(cmds, func() tea.Msg { return tui.FetchingMoreEmailsMsg{} })
-		cmds = append(cmds, fetchEmails(m.config, paginationLimit, msg.Offset))
-		return m, tea.Batch(cmds...)
+		return m, tea.Batch(
+			func() tea.Msg { return tui.FetchingMoreEmailsMsg{} },
+			fetchEmails(m.config, paginationLimit, msg.Offset),
+		)
 
 	case tui.EmailsAppendedMsg:
 		m.emails = append(m.emails, msg.Emails...)
-		// Pass the new emails to the inbox to be appended.
-		m.current, cmd = m.current.Update(msg)
-		cmds = append(cmds, cmd)
-		return m, tea.Batch(cmds...)
+		return m, nil
 
 	case tui.GoToSendMsg:
-		m.current = tui.NewComposer(m.config.Email)
+		// When composing a new email, we discard any previously cached draft.
+		m.cachedComposer = nil
+		m.current = tui.NewComposer(m.config.Email, msg.To, msg.Subject, msg.Body)
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
-		cmds = append(cmds, m.current.Init())
+		return m, m.current.Init()
 
 	case tui.GoToSettingsMsg:
 		m.current = tui.NewLogin()
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
-		cmds = append(cmds, m.current.Init())
+		return m, m.current.Init()
 
 	case tui.ViewEmailMsg:
 		emailView := tui.NewEmailView(m.emails[msg.Index], m.width, m.height)
 		m.current = emailView
-		cmds = append(cmds, m.current.Init())
+		return m, m.current.Init()
+
+	case tui.ReplyToEmailMsg:
+		to := msg.Email.From
+		subject := "Re: " + msg.Email.Subject
+		body := fmt.Sprintf("\n\nOn %s, %s wrote:\n> %s", msg.Email.Date.Format("Jan 2, 2006 at 3:04 PM"), msg.Email.From, strings.ReplaceAll(msg.Email.Body, "\n", "\n> "))
+		m.current = tui.NewComposer(m.config.Email, to, subject, body)
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
+
+	case tui.GoToFilePickerMsg:
+		m.previousModel = m.current
+		wd, _ := os.Getwd()
+		m.current = tui.NewFilePicker(wd)
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
+
+	case tui.FileSelectedMsg, tui.CancelFilePickerMsg:
+		if m.previousModel != nil {
+			m.current = m.previousModel
+			m.previousModel = nil
+		}
+		return m, nil
 
 	case tui.SendEmailMsg:
+		m.cachedComposer = nil // Clear cache on successful send
 		m.current = tui.NewStatus("Sending email...")
-		cmds = append(cmds, m.current.Init(), sendEmail(m.config, msg))
+		return m, tea.Batch(m.current.Init(), sendEmail(m.config, msg))
 
 	case tui.EmailResultMsg:
-		m.current = tui.NewChoice()
-		cmds = append(cmds, m.current.Init())
-	}
+		m.current = tui.NewChoice(m.cachedComposer != nil)
+		return m, m.current.Init()
 
-	// Pass all other messages to the current view.
-	m.current, cmd = m.current.Update(msg)
-	cmds = append(cmds, cmd)
+	case tui.DeleteEmailMsg:
+		m.previousModel = m.current
+		m.current = tui.NewStatus("Deleting email...")
+		return m, tea.Batch(m.current.Init(), deleteEmailCmd(m.config, msg.UID))
+
+	case tui.ArchiveEmailMsg:
+		m.previousModel = m.current
+		m.current = tui.NewStatus("Archiving email...")
+		return m, tea.Batch(m.current.Init(), archiveEmailCmd(m.config, msg.UID))
+
+	case tui.EmailActionDoneMsg:
+		if msg.Err != nil {
+			log.Printf("Action failed: %v", msg.Err)
+			m.current = m.inbox
+			return m, nil
+		}
+		var updatedEmails []fetcher.Email
+		for _, email := range m.emails {
+			if email.UID != msg.UID {
+				updatedEmails = append(updatedEmails, email)
+			}
+		}
+		m.emails = updatedEmails
+		m.inbox = tui.NewInbox(m.emails)
+		m.current = m.inbox
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
+
+	case tui.DownloadAttachmentMsg:
+		m.previousModel = m.current
+		m.current = tui.NewStatus(fmt.Sprintf("Downloading %s...", msg.Filename))
+		return m, tea.Batch(m.current.Init(), downloadAttachmentCmd(msg))
+
+	case tui.AttachmentDownloadedMsg:
+		var statusMsg string
+		if msg.Err != nil {
+			statusMsg = fmt.Sprintf("Error downloading: %v", msg.Err)
+		} else {
+			statusMsg = fmt.Sprintf("Saved to %s", msg.Path)
+		}
+		m.current = tui.NewStatus(statusMsg)
+		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+			return tui.RestoreViewMsg{}
+		})
+
+	case tui.RestoreViewMsg:
+		if m.previousModel != nil {
+			m.current = m.previousModel
+			m.previousModel = nil
+		}
+		return m, nil
+	}
 
 	return m, tea.Batch(cmds...)
 }
@@ -159,40 +247,32 @@ func (m *mainModel) View() string {
 	return m.current.View()
 }
 
-// markdownToHTML converts a Markdown string to an HTML string.
 func markdownToHTML(md []byte) []byte {
 	var buf bytes.Buffer
-	p := goldmark.New(
-		goldmark.WithRendererOptions(
-			html.WithUnsafe(), // Allow raw HTML in email.
-		),
-	)
+	p := goldmark.New(goldmark.WithRendererOptions(html.WithUnsafe()))
 	if err := p.Convert(md, &buf); err != nil {
-		return md // Fallback to original markdown.
+		return md
 	}
 	return buf.Bytes()
 }
 
-// sendEmail finds local image paths, embeds them, and sends the email.
 func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 	return func() tea.Msg {
 		recipients := []string{msg.To}
 		body := msg.Body
 		images := make(map[string][]byte)
+		attachments := make(map[string][]byte)
 
-		// Find all markdown image tags.
 		re := regexp.MustCompile(`!\[.*?\]\((.*?)\)`)
 		matches := re.FindAllStringSubmatch(body, -1)
 
 		for _, match := range matches {
 			imgPath := match[1]
-			imgData, err := os.ReadFile(imgPath) // Use os.ReadFile.
+			imgData, err := os.ReadFile(imgPath)
 			if err != nil {
 				log.Printf("Could not read image file %s: %v", imgPath, err)
 				continue
 			}
-
-			// Create a unique CID that includes the file extension.
 			cid := fmt.Sprintf("%s%s@%s", uuid.NewString(), filepath.Ext(imgPath), "email-cli")
 			images[cid] = []byte(base64.StdEncoding.EncodeToString(imgData))
 			body = strings.Replace(body, imgPath, "cid:"+cid, 1)
@@ -200,17 +280,25 @@ func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 
 		htmlBody := markdownToHTML([]byte(body))
 
-		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body, string(htmlBody), images)
+		if msg.AttachmentPath != "" {
+			fileData, err := os.ReadFile(msg.AttachmentPath)
+			if err != nil {
+				log.Printf("Could not read attachment file %s: %v", msg.AttachmentPath, err)
+			} else {
+				_, filename := filepath.Split(msg.AttachmentPath)
+				attachments[filename] = fileData
+			}
+		}
+
+		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References)
 		if err != nil {
 			log.Printf("Failed to send email: %v", err)
 			return tui.EmailResultMsg{Err: err}
 		}
-		time.Sleep(1 * time.Second)
 		return tui.EmailResultMsg{}
 	}
 }
 
-// fetchEmails retrieves emails in the background and dispatches the correct message.
 func fetchEmails(cfg *config.Config, limit, offset uint32) tea.Cmd {
 	return func() tea.Msg {
 		emails, err := fetcher.FetchEmails(cfg, limit, offset)
@@ -218,11 +306,41 @@ func fetchEmails(cfg *config.Config, limit, offset uint32) tea.Cmd {
 			return tui.FetchErr(err)
 		}
 		if offset == 0 {
-			// This is the initial fetch.
 			return tui.EmailsFetchedMsg{Emails: emails}
 		}
-		// This is a subsequent fetch for pagination.
 		return tui.EmailsAppendedMsg{Emails: emails}
+	}
+}
+
+func deleteEmailCmd(cfg *config.Config, uid uint32) tea.Cmd {
+	return func() tea.Msg {
+		err := fetcher.DeleteEmail(cfg, uid)
+		return tui.EmailActionDoneMsg{UID: uid, Err: err}
+	}
+}
+
+func archiveEmailCmd(cfg *config.Config, uid uint32) tea.Cmd {
+	return func() tea.Msg {
+		err := fetcher.ArchiveEmail(cfg, uid)
+		return tui.EmailActionDoneMsg{UID: uid, Err: err}
+	}
+}
+
+func downloadAttachmentCmd(msg tui.DownloadAttachmentMsg) tea.Cmd {
+	return func() tea.Msg {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return tui.AttachmentDownloadedMsg{Err: err}
+		}
+		downloadsPath := filepath.Join(homeDir, "Downloads")
+		if _, err := os.Stat(downloadsPath); os.IsNotExist(err) {
+			if mkErr := os.MkdirAll(downloadsPath, 0755); mkErr != nil {
+				return tui.AttachmentDownloadedMsg{Err: mkErr}
+			}
+		}
+		filePath := filepath.Join(downloadsPath, msg.Filename)
+		err = os.WriteFile(filePath, msg.Data, 0644)
+		return tui.AttachmentDownloadedMsg{Path: filePath, Err: err}
 	}
 }
 
@@ -230,7 +348,6 @@ func main() {
 	cfg, err := config.LoadConfig()
 	var initialModel *mainModel
 	if err != nil {
-		// If config doesn't exist, guide the user to create one via the login view.
 		initialModel = newInitialModel(nil)
 	} else {
 		initialModel = newInitialModel(cfg)

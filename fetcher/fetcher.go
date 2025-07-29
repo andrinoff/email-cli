@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,15 +18,24 @@ import (
 	"golang.org/x/text/transform"
 )
 
-type Email struct {
-	From    string
-	To      []string
-	Subject string
-	Body    string
-	Date    time.Time
+// Attachment holds data for an email attachment.
+type Attachment struct {
+	Filename string
+	Data     []byte
 }
 
-// ... (decodePart and decodeHeader functions remain the same)
+type Email struct {
+	UID         uint32
+	From        string
+	To          []string
+	Subject     string
+	Body        string
+	Date        time.Time
+	MessageID   string
+	References  []string
+	Attachments []Attachment
+}
+
 func decodePart(reader io.Reader, header mail.PartHeader) (string, error) {
 	mediaType, params, err := mime.ParseMediaType(header.Get("Content-Type"))
 	if err != nil {
@@ -33,7 +43,7 @@ func decodePart(reader io.Reader, header mail.PartHeader) (string, error) {
 		return string(body), nil
 	}
 
-	charset := "utf-8" // Default charset
+	charset := "utf-8"
 	if params["charset"] != "" {
 		charset = strings.ToLower(params["charset"])
 	}
@@ -72,8 +82,7 @@ func decodeHeader(header string) string {
 	return decoded
 }
 
-// FetchEmails now supports pagination with a limit and offset.
-func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
+func connect(cfg *config.Config) (*client.Client, error) {
 	var imapServer string
 	var imapPort int
 
@@ -85,7 +94,7 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		imapServer = "imap.mail.me.com"
 		imapPort = 993
 	default:
-		return nil, fmt.Errorf("unsupported or missing service_provider in config.json: %s", cfg.ServiceProvider)
+		return nil, fmt.Errorf("unsupported service_provider: %s", cfg.ServiceProvider)
 	}
 
 	addr := fmt.Sprintf("%s:%d", imapServer, imapPort)
@@ -93,20 +102,26 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Connected")
-	defer c.Logout()
 
 	if err := c.Login(cfg.Email, cfg.Password); err != nil {
 		return nil, err
 	}
-	log.Println("Logged in")
+
+	return c, nil
+}
+
+func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
+	c, err := connect(cfg)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Logout()
 
 	mbox, err := c.Select("INBOX", false)
 	if err != nil {
 		return nil, err
 	}
 
-	// Handle pagination logic
 	if mbox.Messages == 0 {
 		return []Email{}, nil
 	}
@@ -118,7 +133,7 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 	}
 
 	if to < 1 {
-		return []Email{}, nil // No more messages to fetch
+		return []Email{}, nil
 	}
 
 	seqset := new(imap.SeqSet)
@@ -126,8 +141,9 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 
 	messages := make(chan *imap.Message, limit)
 	done := make(chan error, 1)
+	fetchItems := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchItem("BODY[]")}
 	go func() {
-		done <- c.Fetch(seqset, []imap.FetchItem{imap.FetchEnvelope, imap.FetchItem("BODY[]")}, messages)
+		done <- c.Fetch(seqset, fetchItems, messages)
 	}()
 
 	var emails []Email
@@ -153,6 +169,8 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		toAddrs, _ := header.AddressList("To")
 		subject := decodeHeader(header.Get("Subject"))
 		date, _ := header.Date()
+		messageID := header.Get("Message-ID")
+		references := header.Get("References")
 
 		var fromAddr string
 		if len(fromAddrs) > 0 {
@@ -165,6 +183,7 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		}
 
 		var body string
+		var attachments []Attachment
 		for {
 			p, err := mr.NextPart()
 			if err == io.EOF {
@@ -174,22 +193,47 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 				break
 			}
 
+			// Correctly parse Content-Disposition
+			cdHeader := p.Header.Get("Content-Disposition")
+			if cdHeader != "" {
+				disposition, params, err := mime.ParseMediaType(cdHeader)
+				if err == nil && (disposition == "attachment" || disposition == "inline") {
+					filename := params["filename"]
+					if filename != "" {
+						partBody, _ := ioutil.ReadAll(p.Body)
+						encoding := p.Header.Get("Content-Transfer-Encoding")
+						if strings.ToLower(encoding) == "base64" {
+							decoded, decodeErr := base64.StdEncoding.DecodeString(string(partBody))
+							if decodeErr == nil {
+								partBody = decoded
+							}
+						}
+						attachments = append(attachments, Attachment{Filename: filename, Data: partBody})
+						continue // Skip to next part
+					}
+				}
+			}
+
+			// Process body part if not an attachment
 			mediaType, _, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
-			if mediaType == "text/plain" || mediaType == "text/html" {
+			if (mediaType == "text/plain" || mediaType == "text/html") && body == "" {
 				decodedPart, decodeErr := decodePart(p.Body, p.Header)
 				if decodeErr == nil {
 					body = decodedPart
-					break
 				}
 			}
 		}
 
 		emails = append(emails, Email{
-			From:    fromAddr,
-			To:      toAddrList,
-			Subject: subject,
-			Body:    body,
-			Date:    date,
+			UID:         msg.Uid,
+			From:        fromAddr,
+			To:          toAddrList,
+			Subject:     subject,
+			Body:        body,
+			Date:        date,
+			MessageID:   messageID,
+			References:  strings.Fields(references),
+			Attachments: attachments,
 		})
 	}
 
@@ -202,4 +246,43 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 	}
 
 	return emails, nil
+}
+
+func moveEmail(cfg *config.Config, uid uint32, destMailbox string) error {
+	c, err := connect(cfg)
+	if err != nil {
+		return err
+	}
+	defer c.Logout()
+
+	if _, err := c.Select("INBOX", false); err != nil {
+		return err
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	return c.UidMove(seqSet, destMailbox)
+}
+
+func DeleteEmail(cfg *config.Config, uid uint32) error {
+	var trashMailbox string
+	switch cfg.ServiceProvider {
+	case "gmail":
+		trashMailbox = "[Gmail]/Trash"
+	default:
+		trashMailbox = "Trash"
+	}
+	return moveEmail(cfg, uid, trashMailbox)
+}
+
+func ArchiveEmail(cfg *config.Config, uid uint32) error {
+	var archiveMailbox string
+	switch cfg.ServiceProvider {
+	case "gmail":
+		archiveMailbox = "[Gmail]/All Mail"
+	default:
+		archiveMailbox = "Archive"
+	}
+	return moveEmail(cfg, uid, archiveMailbox)
 }
