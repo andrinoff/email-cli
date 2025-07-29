@@ -105,6 +105,16 @@ brews:
     # This tells Homebrew to just install the binary.
     install: |
       bin.install "email-cli"
+
+# 'snapcrafts' configures the Snapcraft integration.
 snapcrafts:
-  - name: email-cli
+  - # The configuration for your Snapcraft package.
+    name: email-cli
     publish: true
+    summary: "A beautiful and functional email client for your terminal."
+    description: |
+      A beautiful and functional email client for your terminal, built with Go and the charming Bubble Tea TUI library.
+      Never leave your command line to check your inbox or send an email again!
+    grade: stable
+    confinement: strict
+    license: MIT
