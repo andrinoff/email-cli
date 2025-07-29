@@ -15,8 +15,10 @@ var (
 	inboxHelpStyle  = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
 )
 
+// item now holds its original index from the main email slice.
 type item struct {
-	title, desc string
+	title, desc   string
+	originalIndex int
 }
 
 func (i item) Title() string       { return i.title }
@@ -57,8 +59,9 @@ func NewInbox(emails []fetcher.Email) *Inbox {
 	items := make([]list.Item, len(emails))
 	for i, email := range emails {
 		items[i] = item{
-			title: email.Subject,
-			desc:  email.From,
+			title:         email.Subject,
+			desc:          email.From,
+			originalIndex: i, // Store the original index here.
 		}
 	}
 
@@ -87,12 +90,14 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// When the user presses enter, we look at the selected item and send
+		// a message with its *original* index.
 		if msg.String() == "enter" {
-			i, ok := m.list.SelectedItem().(item)
+			selectedItem, ok := m.list.SelectedItem().(item)
 			if ok {
-				_ = i
 				return m, func() tea.Msg {
-					return ViewEmailMsg{Index: m.list.Index()}
+					// Use the stored original index, which is correct even when filtered.
+					return ViewEmailMsg{Index: selectedItem.originalIndex}
 				}
 			}
 		}
@@ -111,11 +116,11 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		newItems := make([]list.Item, len(msg.Emails))
 		for i, email := range msg.Emails {
 			newItems[i] = item{
-				title: email.Subject,
-				desc:  email.From,
+				title:         email.Subject,
+				desc:          email.From,
+				originalIndex: m.emailsCount + i, // The original index continues to grow.
 			}
 		}
-		// Correctly append new items to the list.
 		currentItems := m.list.Items()
 		allItems := append(currentItems, newItems...)
 		cmd := m.list.SetItems(allItems)
@@ -125,7 +130,7 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Infinite scroll logic
-	if !m.isFetching && m.list.Index() >= len(m.list.Items())-5 {
+	if !m.isFetching && len(m.list.Items()) > 0 && m.list.Index() >= len(m.list.Items())-5 {
 		cmds = append(cmds, func() tea.Msg {
 			return FetchMoreEmailsMsg{Offset: uint32(m.emailsCount)}
 		})
