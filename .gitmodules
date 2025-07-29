@@ -1,3 +1,0 @@
-[submodule "homebrew"]
-	path = homebrew
-	url = git@github.com:andrinoff/homebrew-email-cli.git
