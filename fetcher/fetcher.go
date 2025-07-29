@@ -18,14 +18,15 @@ import (
 )
 
 type Email struct {
-	From    string
-	To      []string
-	Subject string
-	Body    string
-	Date    time.Time
+	From      string
+	To        []string
+	Subject   string
+	Body      string
+	Date      time.Time
+	MessageID string
+	References []string
 }
 
-// ... (decodePart and decodeHeader functions remain the same)
 func decodePart(reader io.Reader, header mail.PartHeader) (string, error) {
 	mediaType, params, err := mime.ParseMediaType(header.Get("Content-Type"))
 	if err != nil {
@@ -153,6 +154,8 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		toAddrs, _ := header.AddressList("To")
 		subject := decodeHeader(header.Get("Subject"))
 		date, _ := header.Date()
+		messageID := header.Get("Message-ID")
+		references := header.Get("References")
 
 		var fromAddr string
 		if len(fromAddrs) > 0 {
@@ -185,11 +188,13 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		}
 
 		emails = append(emails, Email{
-			From:    fromAddr,
-			To:      toAddrList,
-			Subject: subject,
-			Body:    body,
-			Date:    date,
+			From:       fromAddr,
+			To:         toAddrList,
+			Subject:    subject,
+			Body:       body,
+			Date:       date,
+			MessageID:  messageID,
+			References: strings.Fields(references),
 		})
 	}
 

@@ -125,7 +125,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case tui.GoToSendMsg:
-		m.current = tui.NewComposer(m.config.Email)
+		m.current = tui.NewComposer(m.config.Email, msg.To, msg.Subject, msg.Body)
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
 
@@ -138,6 +138,18 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		emailView := tui.NewEmailView(m.emails[msg.Index], m.width, m.height)
 		m.current = emailView
 		cmds = append(cmds, m.current.Init())
+
+	case tui.ReplyToEmailMsg:
+		to := msg.Email.From
+		subject := "Re: " + msg.Email.Subject
+		body := fmt.Sprintf("\n\nOn %s, %s wrote:\n> %s", msg.Email.Date.Format("Jan 2, 2006 at 3:04 PM"), msg.Email.From, strings.ReplaceAll(msg.Email.Body, "\n", "\n> "))
+		m.current = tui.NewComposer(m.config.Email, to, subject, body)
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		cmds = append(cmds, m.current.Init())
+		// This is a reply, so we'll need to pass the message ID and references.
+		// We'll add this to the SendEmailMsg that gets created when the user hits send.
+		// We'll modify the composer so that when it creates a SendEmailMsg, it can be passed
+		// the InReplyTo and References.
 
 	case tui.SendEmailMsg:
 		m.current = tui.NewStatus("Sending email...")
@@ -200,7 +212,7 @@ func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 
 		htmlBody := markdownToHTML([]byte(body))
 
-		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body, string(htmlBody), images)
+		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body, string(htmlBody), images, msg.InReplyTo, msg.References)
 		if err != nil {
 			log.Printf("Failed to send email: %v", err)
 			return tui.EmailResultMsg{Err: err}

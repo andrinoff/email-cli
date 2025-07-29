@@ -27,7 +27,7 @@ func generateMessageID(from string) string {
 }
 
 // SendEmail constructs a multipart message with plain text, HTML, and embedded images.
-func SendEmail(cfg *config.Config, to []string, subject, plainBody, htmlBody string, images map[string][]byte) error {
+func SendEmail(cfg *config.Config, to []string, subject, plainBody, htmlBody string, images map[string][]byte, inReplyTo string, references []string) error {
 	var smtpServer string
 	var smtpPort int
 
@@ -62,6 +62,17 @@ func SendEmail(cfg *config.Config, to []string, subject, plainBody, htmlBody str
 		"Message-ID":   generateMessageID(cfg.Email),
 		"Content-Type": "multipart/related; boundary=" + mainWriter.Boundary(),
 	}
+
+	if inReplyTo != "" {
+		headers["In-Reply-To"] = inReplyTo
+		// When replying, the references should be the previous references plus the message-id of the email we're replying to.
+		if len(references) > 0 {
+			headers["References"] = strings.Join(references, " ") + " " + inReplyTo
+		} else {
+			headers["References"] = inReplyTo
+		}
+	}
+
 	for k, v := range headers {
 		fmt.Fprintf(&msg, "%s: %s\r\n", k, v)
 	}

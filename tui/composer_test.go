@@ -10,7 +10,7 @@ import (
 // TestComposerUpdate verifies the state transitions in the email composer.
 func TestComposerUpdate(t *testing.T) {
 	// Initialize a new composer.
-	composer := NewComposer("test@example.com")
+	composer := NewComposer("test@example.com", "", "", "")
 
 	t.Run("Focus cycling", func(t *testing.T) {
 		// Initial focus is on the 'To' input (index 0).
@@ -20,28 +20,28 @@ func TestComposerUpdate(t *testing.T) {
 
 		// Simulate pressing Tab to move to the 'Subject' field.
 		model, _ := composer.Update(tea.KeyMsg{Type: tea.KeyTab}) // model is tea.Model
-		composer = model.(*Composer) // Cast to *Composer
+		composer = model.(*Composer)                             // Cast to *Composer
 		if composer.focusIndex != 1 {
 			t.Errorf("After one Tab, focusIndex should be 1, got %d", composer.focusIndex)
 		}
 
 		// Simulate pressing Tab again to move to the 'Body' field.
 		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyTab}) // model is tea.Model
-		composer = model.(*Composer) // Cast to *Composer
+		composer = model.(*Composer)                             // Cast to *Composer
 		if composer.focusIndex != 2 {
 			t.Errorf("After two Tabs, focusIndex should be 2, got %d", composer.focusIndex)
 		}
 
 		// Simulate pressing Tab again to move to the 'Send' button.
 		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyTab}) // model is tea.Model
-		composer = model.(*Composer) // Cast to *Composer
+		composer = model.(*Composer)                             // Cast to *Composer
 		if composer.focusIndex != 3 {
 			t.Errorf("After three Tabs, focusIndex should be 3 (Send), got %d", composer.focusIndex)
 		}
 
 		// Simulate one more Tab to wrap around to the 'To' field.
 		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyTab}) // model is tea.Model
-		composer = model.(*Composer) // Cast to *Composer
+		composer = model.(*Composer)                             // Cast to *Composer
 		if composer.focusIndex != 0 {
 			t.Errorf("After four Tabs, focusIndex should wrap to 0, got %d", composer.focusIndex)
 		}

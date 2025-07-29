@@ -28,12 +28,13 @@ type Composer struct {
 }
 
 // NewComposer initializes a new composer model.
-func NewComposer(from string) *Composer {
+func NewComposer(from, to, subject, body string) *Composer {
 	m := &Composer{fromAddr: from}
 
 	m.toInput = textinput.New()
 	m.toInput.Cursor.Style = cursorStyle
 	m.toInput.Placeholder = "To"
+	m.toInput.SetValue(to)
 	m.toInput.Focus()
 	m.toInput.Prompt = "> "
 	m.toInput.CharLimit = 256
@@ -41,14 +42,17 @@ func NewComposer(from string) *Composer {
 	m.subjectInput = textinput.New()
 	m.subjectInput.Cursor.Style = cursorStyle
 	m.subjectInput.Placeholder = "Subject"
+	m.subjectInput.SetValue(subject)
 	m.subjectInput.Prompt = "> "
 	m.subjectInput.CharLimit = 256
 
 	m.bodyInput = textarea.New()
 	m.bodyInput.Cursor.Style = cursorStyle
 	m.bodyInput.Placeholder = "Body (Markdown supported)..."
+	m.bodyInput.SetValue(body)
 	m.bodyInput.Prompt = "> "
 	m.bodyInput.SetHeight(10)
+	m.bodyInput.SetCursor(0) // Set cursor to the beginning on creation
 
 	return m
 }
@@ -69,13 +73,15 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.subjectInput.Width = inputWidth
 		m.bodyInput.SetWidth(inputWidth)
 
+	case SetComposerCursorToStartMsg:
+		m.bodyInput.SetCursor(0)
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.Type {
-		// IMPORTANT: Removed tea.KeyEsc from this case
 		case tea.KeyCtrlC:
 			return m, tea.Quit
 
-		// Handle Tab and Shift+Tab to cycle focus between inputs.
 		case tea.KeyTab, tea.KeyShiftTab:
 			if msg.Type == tea.KeyShiftTab {
 				m.focusIndex--
@@ -103,12 +109,12 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, m.subjectInput.Focus())
 			case 2:
 				cmds = append(cmds, m.bodyInput.Focus())
+				// Send a message to explicitly set the cursor position AFTER focus.
+				cmds = append(cmds, func() tea.Msg { return SetComposerCursorToStartMsg{} })
 			}
 			return m, tea.Batch(cmds...)
 
-		// Handle Enter key.
 		case tea.KeyEnter:
-			// If on the Send button, send the email.
 			if m.focusIndex == 3 {
 				return m, func() tea.Msg {
 					return SendEmailMsg{
@@ -151,6 +157,6 @@ func (m *Composer) View() string {
 		m.subjectInput.View(),
 		m.bodyInput.View(),
 		*button,
-		helpStyle.Render("Markdown enabled! • tab: next field • esc: back to menu"),
+		helpStyle.Render("Markdown/HTML • tab: next field • esc: back to menu"),
 	)
 }

@@ -47,6 +47,13 @@ func (m *EmailView) Init() tea.Cmd {
 func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "r":
+			return m, func() tea.Msg {
+				return ReplyToEmailMsg{Email: m.email}
+			}
+		}
 	case tea.WindowSizeMsg:
 		header := fmt.Sprintf("From: %s\nSubject: %s", m.email.From, m.email.Subject)
 		headerHeight := lipgloss.Height(header) + 2
@@ -60,5 +67,6 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *EmailView) View() string {
 	header := fmt.Sprintf("From: %s\nSubject: %s", m.email.From, m.email.Subject)
 	styledHeader := emailHeaderStyle.Width(m.viewport.Width).Render(header)
-	return fmt.Sprintf("%s\n%s", styledHeader, m.viewport.View())
+	help := helpStyle.Render("r: reply • esc: back to inbox")
+	return fmt.Sprintf("%s\n%s\n%s", styledHeader, m.viewport.View(), help)
 }

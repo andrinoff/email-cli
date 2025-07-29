@@ -9,9 +9,11 @@ type ViewEmailMsg struct {
 
 // A message to indicate that an email has been sent.
 type SendEmailMsg struct {
-	To      string
-	Subject string
-	Body    string
+	To         string
+	Subject    string
+	Body       string
+	InReplyTo  string
+	References []string
 }
 
 // A message to indicate that the user has entered their credentials.
@@ -48,7 +50,11 @@ type FetchErr error
 type GoToInboxMsg struct{}
 
 // A message to navigate to the composer view.
-type GoToSendMsg struct{}
+type GoToSendMsg struct {
+	To      string
+	Subject string
+	Body    string
+}
 
 // A message to navigate to the settings view.
 type GoToSettingsMsg struct{}
@@ -65,3 +71,11 @@ type FetchingMoreEmailsMsg struct{}
 type EmailsAppendedMsg struct {
 	Emails []fetcher.Email
 }
+
+// A message to reply to an email.
+type ReplyToEmailMsg struct {
+	Email fetcher.Email
+}
+
+// A message to set the composer cursor to the start.
+type SetComposerCursorToStartMsg struct{}
