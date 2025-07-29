@@ -46,8 +46,11 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	fmt.Fprint(w, fn(str))
 }
 
+// Inbox is now stateful to handle pagination.
 type Inbox struct {
-	list list.Model
+	list        list.Model
+	isFetching  bool
+	emailsCount int
 }
 
 func NewInbox(emails []fetcher.Email) *Inbox {
@@ -61,13 +64,18 @@ func NewInbox(emails []fetcher.Email) *Inbox {
 
 	l := list.New(items, itemDelegate{}, 20, 14)
 	l.Title = "Inbox"
-	l.SetShowStatusBar(false)
+	l.SetShowStatusBar(true)
 	l.SetFilteringEnabled(true)
 	l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = inboxHelpStyle
+	l.SetStatusBarItemName("email", "emails")
 
-	return &Inbox{list: l}
+	return &Inbox{
+		list:        l,
+		isFetching:  false,
+		emailsCount: len(emails),
+	}
 }
 
 func (m *Inbox) Init() tea.Cmd {
@@ -75,6 +83,8 @@ func (m *Inbox) Init() tea.Cmd {
 }
 
 func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "enter" {
@@ -89,13 +99,44 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.list.SetWidth(msg.Width)
 		return m, nil
+
+	case FetchingMoreEmailsMsg:
+		m.isFetching = true
+		m.list.Title = "Fetching more emails..."
+		return m, nil
+
+	case EmailsAppendedMsg:
+		m.isFetching = false
+		m.list.Title = "Inbox"
+		newItems := make([]list.Item, len(msg.Emails))
+		for i, email := range msg.Emails {
+			newItems[i] = item{
+				title: email.Subject,
+				desc:  email.From,
+			}
+		}
+		// Correctly append new items to the list.
+		currentItems := m.list.Items()
+		allItems := append(currentItems, newItems...)
+		cmd := m.list.SetItems(allItems)
+		m.emailsCount += len(msg.Emails)
+		cmds = append(cmds, cmd)
+		return m, tea.Batch(cmds...)
+	}
+
+	// Infinite scroll logic
+	if !m.isFetching && m.list.Index() >= len(m.list.Items())-5 {
+		cmds = append(cmds, func() tea.Msg {
+			return FetchMoreEmailsMsg{Offset: uint32(m.emailsCount)}
+		})
 	}
 
 	var cmd tea.Cmd
 	var newModel list.Model
 	newModel, cmd = m.list.Update(msg)
 	m.list = newModel
-	return m, cmd
+	cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
 }
 
 func (m *Inbox) View() string {

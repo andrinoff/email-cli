@@ -21,6 +21,11 @@ import (
 	"github.com/yuin/goldmark/renderer/html"
 )
 
+const (
+	initialEmailLimit = 20
+	paginationLimit   = 20
+)
+
 // mainModel holds the state for the entire application.
 type mainModel struct {
 	current tea.Model
@@ -79,7 +84,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	// --- Custom Messages for Switching Views ---
+	// --- Custom Messages for Switching Views and Pagination ---
 	case tui.Credentials:
 		cfg := &config.Config{
 			ServiceProvider: msg.Provider,
@@ -97,7 +102,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tui.GoToInboxMsg:
 		m.current = tui.NewStatus("Fetching emails...")
-		return m, tea.Batch(m.current.Init(), fetchEmails(m.config))
+		return m, tea.Batch(m.current.Init(), fetchEmails(m.config, initialEmailLimit, 0))
 
 	case tui.EmailsFetchedMsg:
 		m.emails = msg.Emails
@@ -106,6 +111,18 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Manually set the size of the new view.
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
+
+	case tui.FetchMoreEmailsMsg:
+		cmds = append(cmds, func() tea.Msg { return tui.FetchingMoreEmailsMsg{} })
+		cmds = append(cmds, fetchEmails(m.config, paginationLimit, msg.Offset))
+		return m, tea.Batch(cmds...)
+
+	case tui.EmailsAppendedMsg:
+		m.emails = append(m.emails, msg.Emails...)
+		// Pass the new emails to the inbox to be appended.
+		m.current, cmd = m.current.Update(msg)
+		cmds = append(cmds, cmd)
+		return m, tea.Batch(cmds...)
 
 	case tui.GoToSendMsg:
 		m.current = tui.NewComposer(m.config.Email)
@@ -193,14 +210,19 @@ func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 	}
 }
 
-// fetchEmails retrieves emails in the background.
-func fetchEmails(cfg *config.Config) tea.Cmd {
+// fetchEmails retrieves emails in the background and dispatches the correct message.
+func fetchEmails(cfg *config.Config, limit, offset uint32) tea.Cmd {
 	return func() tea.Msg {
-		emails, err := fetcher.FetchEmails(cfg)
+		emails, err := fetcher.FetchEmails(cfg, limit, offset)
 		if err != nil {
 			return tui.FetchErr(err)
 		}
-		return tui.EmailsFetchedMsg{Emails: emails}
+		if offset == 0 {
+			// This is the initial fetch.
+			return tui.EmailsFetchedMsg{Emails: emails}
+		}
+		// This is a subsequent fetch for pagination.
+		return tui.EmailsAppendedMsg{Emails: emails}
 	}
 }
 
@@ -208,6 +230,7 @@ func main() {
 	cfg, err := config.LoadConfig()
 	var initialModel *mainModel
 	if err != nil {
+		// If config doesn't exist, guide the user to create one via the login view.
 		initialModel = newInitialModel(nil)
 	} else {
 		initialModel = newInitialModel(cfg)

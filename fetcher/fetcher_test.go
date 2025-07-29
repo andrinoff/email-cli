@@ -23,7 +23,7 @@ func TestFetchEmails(t *testing.T) {
 		t.Skip("Skipping TestFetchEmails: placeholder or empty password found in config.")
 	}
 
-	emails, err := FetchEmails(cfg)
+	emails, err := FetchEmails(cfg, 10, 10)
 	if err != nil {
 		t.Fatalf("FetchEmails() failed with error: %v", err)
 	}

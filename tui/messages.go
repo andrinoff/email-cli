@@ -52,3 +52,16 @@ type GoToSendMsg struct{}
 
 // A message to navigate to the settings view.
 type GoToSettingsMsg struct{}
+
+// A message to fetch more emails with a given offset.
+type FetchMoreEmailsMsg struct {
+	Offset uint32
+}
+
+// A message to indicate that the app is fetching more emails.
+type FetchingMoreEmailsMsg struct{}
+
+// A message to indicate that new emails have been fetched and should be appended.
+type EmailsAppendedMsg struct {
+	Emails []fetcher.Email
+}
