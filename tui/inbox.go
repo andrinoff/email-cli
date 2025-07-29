@@ -136,6 +136,15 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 	}
 
+	// New logic to fetch more emails when filtering is active
+	if m.list.FilterState() == list.Filtering && !m.isFetching {
+		m.isFetching = true
+		m.list.Title = "Fetching more emails..."
+		cmds = append(cmds, func() tea.Msg {
+			return FetchMoreEmailsMsg{Offset: uint32(m.emailsCount)}
+		})
+	}
+
 	var cmd tea.Cmd
 	var newModel list.Model
 	newModel, cmd = m.list.Update(msg)
