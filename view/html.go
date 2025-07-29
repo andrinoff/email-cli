@@ -83,6 +83,20 @@ func ProcessBody(rawBody string) (string, error) {
 		s.ReplaceWithHtml(hyperlink(href, s.Text()))
 	})
 
+	// Format images into terminal hyperlinks
+	doc.Find("img").Each(func(i int, s *goquery.Selection) {
+		src, exists := s.Attr("src")
+		if !exists {
+			return
+		}
+		alt, _ := s.Attr("alt")
+
+		if alt == "" {
+			alt = "Does not contain alt text"
+		}
+		s.ReplaceWithHtml(hyperlink(src, fmt.Sprintf("\n [Click here to view image: %s] \n", alt)))
+	})
+
 	// Get the document's text content, which now includes our formatting
 	text := doc.Text()
 
