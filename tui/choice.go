@@ -8,34 +8,30 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Styles defined locally to avoid import issues.
 var (
-	// A more beautiful style for the main menu
-	docStyle = lipgloss.NewStyle().Margin(1, 2)
-
-	titleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFFDF5")).
-			Background(lipgloss.Color("#25A065")).
-			Padding(0, 1)
-
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
-
-	// Styling for the choice list
-	listHeader = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			PaddingBottom(1)
-
-	// Custom item styles
+	docStyle          = lipgloss.NewStyle().Margin(1, 2)
+	titleStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFDF5")).Background(lipgloss.Color("#25A065")).Padding(0, 1)
+	listHeader        = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).PaddingBottom(1)
 	itemStyle         = lipgloss.NewStyle().PaddingLeft(2)
 	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("205"))
 )
 
 type Choice struct {
-	cursor int
+	cursor         int
+	choices        []string
+	hasCachedDraft bool
 }
 
-func NewChoice() Choice {
-	return Choice{cursor: 0}
+func NewChoice(hasCachedDraft bool) Choice {
+	choices := []string{"View Inbox", "Compose Email", "Settings"}
+	if hasCachedDraft {
+		choices = append(choices, "Restore Draft")
+	}
+	return Choice{
+		choices:        choices,
+		hasCachedDraft: hasCachedDraft,
+	}
 }
 
 func (m Choice) Init() tea.Cmd {
@@ -51,17 +47,20 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < 2 { // We have three choices now
+			if m.cursor < len(m.choices)-1 {
 				m.cursor++
 			}
 		case "enter":
-			switch m.cursor {
-			case 0:
+			selectedChoice := m.choices[m.cursor]
+			switch selectedChoice {
+			case "View Inbox":
 				return m, func() tea.Msg { return GoToInboxMsg{} }
-			case 1:
+			case "Compose Email":
 				return m, func() tea.Msg { return GoToSendMsg{} }
-			case 2:
+			case "Settings":
 				return m, func() tea.Msg { return GoToSettingsMsg{} }
+			case "Restore Draft":
+				return m, func() tea.Msg { return RestoreDraftMsg{} }
 			}
 		}
 	}
@@ -71,16 +70,11 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Choice) View() string {
 	var b strings.Builder
 
-	// Title
 	b.WriteString(titleStyle.Render("Email CLI") + "\n\n")
-
-	// Header
 	b.WriteString(listHeader.Render("What would you like to do?"))
 	b.WriteString("\n\n")
 
-	// Choices
-	choices := []string{"View Inbox", "Compose Email", "Settings"}
-	for i, choice := range choices {
+	for i, choice := range m.choices {
 		if m.cursor == i {
 			b.WriteString(selectedItemStyle.Render(fmt.Sprintf("> %s", choice)))
 		} else {
@@ -89,7 +83,6 @@ func (m Choice) View() string {
 		b.WriteString("\n")
 	}
 
-	// Help
 	b.WriteString("\n\n")
 	b.WriteString(helpStyle.Render("Use ↑/↓ to navigate, enter to select, and q to quit."))
 

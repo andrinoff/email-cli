@@ -72,8 +72,6 @@ type FileSelectedMsg struct {
 
 type CancelFilePickerMsg struct{}
 
-// --- Email Action Messages ---
-
 type DeleteEmailMsg struct {
 	UID uint32
 }
@@ -82,8 +80,33 @@ type ArchiveEmailMsg struct {
 	UID uint32
 }
 
-// EmailActionDoneMsg reports the result of an action like delete or archive.
 type EmailActionDoneMsg struct {
 	UID uint32
 	Err error
 }
+
+type GoToChoiceMenuMsg struct{}
+
+type DownloadAttachmentMsg struct {
+	Filename string
+	Data     []byte
+}
+
+type AttachmentDownloadedMsg struct {
+	Path string
+	Err  error
+}
+
+type RestoreViewMsg struct{}
+
+type BackToInboxMsg struct{}
+
+// --- Draft Messages ---
+
+// DiscardDraftMsg signals that a draft should be cached.
+type DiscardDraftMsg struct {
+	ComposerState *Composer
+}
+
+// RestoreDraftMsg signals that the cached draft should be restored.
+type RestoreDraftMsg struct{}

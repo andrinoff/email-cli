@@ -1,6 +1,7 @@
 package fetcher
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,15 +18,22 @@ import (
 	"golang.org/x/text/transform"
 )
 
+// Attachment holds data for an email attachment.
+type Attachment struct {
+	Filename string
+	Data     []byte
+}
+
 type Email struct {
-	UID        uint32 // Added UID to uniquely identify emails
-	From       string
-	To         []string
-	Subject    string
-	Body       string
-	Date       time.Time
-	MessageID  string
-	References []string
+	UID         uint32
+	From        string
+	To          []string
+	Subject     string
+	Body        string
+	Date        time.Time
+	MessageID   string
+	References  []string
+	Attachments []Attachment
 }
 
 func decodePart(reader io.Reader, header mail.PartHeader) (string, error) {
@@ -74,7 +82,6 @@ func decodeHeader(header string) string {
 	return decoded
 }
 
-// connect initializes a connection to the IMAP server.
 func connect(cfg *config.Config) (*client.Client, error) {
 	var imapServer string
 	var imapPort int
@@ -176,6 +183,7 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		}
 
 		var body string
+		var attachments []Attachment
 		for {
 			p, err := mr.NextPart()
 			if err == io.EOF {
@@ -185,25 +193,47 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 				break
 			}
 
+			// Correctly parse Content-Disposition
+			cdHeader := p.Header.Get("Content-Disposition")
+			if cdHeader != "" {
+				disposition, params, err := mime.ParseMediaType(cdHeader)
+				if err == nil && (disposition == "attachment" || disposition == "inline") {
+					filename := params["filename"]
+					if filename != "" {
+						partBody, _ := ioutil.ReadAll(p.Body)
+						encoding := p.Header.Get("Content-Transfer-Encoding")
+						if strings.ToLower(encoding) == "base64" {
+							decoded, decodeErr := base64.StdEncoding.DecodeString(string(partBody))
+							if decodeErr == nil {
+								partBody = decoded
+							}
+						}
+						attachments = append(attachments, Attachment{Filename: filename, Data: partBody})
+						continue // Skip to next part
+					}
+				}
+			}
+
+			// Process body part if not an attachment
 			mediaType, _, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
-			if mediaType == "text/plain" || mediaType == "text/html" {
+			if (mediaType == "text/plain" || mediaType == "text/html") && body == "" {
 				decodedPart, decodeErr := decodePart(p.Body, p.Header)
 				if decodeErr == nil {
 					body = decodedPart
-					break
 				}
 			}
 		}
 
 		emails = append(emails, Email{
-			UID:        msg.Uid,
-			From:       fromAddr,
-			To:         toAddrList,
-			Subject:    subject,
-			Body:       body,
-			Date:       date,
-			MessageID:  messageID,
-			References: strings.Fields(references),
+			UID:         msg.Uid,
+			From:        fromAddr,
+			To:          toAddrList,
+			Subject:     subject,
+			Body:        body,
+			Date:        date,
+			MessageID:   messageID,
+			References:  strings.Fields(references),
+			Attachments: attachments,
 		})
 	}
 
@@ -218,7 +248,6 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 	return emails, nil
 }
 
-// moveEmail moves an email to a specified destination mailbox.
 func moveEmail(cfg *config.Config, uid uint32, destMailbox string) error {
 	c, err := connect(cfg)
 	if err != nil {
@@ -236,7 +265,6 @@ func moveEmail(cfg *config.Config, uid uint32, destMailbox string) error {
 	return c.UidMove(seqSet, destMailbox)
 }
 
-// DeleteEmail moves an email to the trash folder.
 func DeleteEmail(cfg *config.Config, uid uint32) error {
 	var trashMailbox string
 	switch cfg.ServiceProvider {
@@ -248,7 +276,6 @@ func DeleteEmail(cfg *config.Config, uid uint32) error {
 	return moveEmail(cfg, uid, trashMailbox)
 }
 
-// ArchiveEmail moves an email to the archive folder.
 func ArchiveEmail(cfg *config.Config, uid uint32) error {
 	var archiveMailbox string
 	switch cfg.ServiceProvider {

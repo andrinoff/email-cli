@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/andrinoff/email-cli/fetcher"
 	"github.com/andrinoff/email-cli/view"
@@ -11,15 +12,15 @@ import (
 )
 
 var (
-	emailHeaderStyle = lipgloss.NewStyle().
-				BorderStyle(lipgloss.NormalBorder()).
-				BorderBottom(true).
-				Padding(0, 1)
+	emailHeaderStyle   = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderBottom(true).Padding(0, 1)
+	attachmentBoxStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder(), false, false, false, true).PaddingLeft(2).MarginTop(1)
 )
 
 type EmailView struct {
-	viewport viewport.Model
-	email    fetcher.Email
+	viewport           viewport.Model
+	email              fetcher.Email
+	attachmentCursor   int
+	focusOnAttachments bool
 }
 
 func NewEmailView(email fetcher.Email, width, height int) *EmailView {
@@ -29,9 +30,15 @@ func NewEmailView(email fetcher.Email, width, height int) *EmailView {
 	}
 
 	header := fmt.Sprintf("From: %s\nSubject: %s", email.From, email.Subject)
-	headerHeight := lipgloss.Height(header) + 2 // Account for padding and border
+	headerHeight := lipgloss.Height(header) + 2
 
-	vp := viewport.New(width, height-headerHeight)
+	// Calculate height for attachments if they exist
+	attachmentHeight := 0
+	if len(email.Attachments) > 0 {
+		attachmentHeight = len(email.Attachments) + 2 // +2 for title and border
+	}
+
+	vp := viewport.New(width, height-headerHeight-attachmentHeight)
 	vp.SetContent(body)
 
 	return &EmailView{
@@ -46,27 +53,93 @@ func (m *EmailView) Init() tea.Cmd {
 
 func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "r":
-			return m, func() tea.Msg {
-				return ReplyToEmailMsg{Email: m.email}
+		// Handle 'esc' key locally
+		if msg.Type == tea.KeyEsc {
+			if m.focusOnAttachments {
+				m.focusOnAttachments = false
+				return m, nil
+			}
+			return m, func() tea.Msg { return BackToInboxMsg{} }
+		}
+
+		if m.focusOnAttachments {
+			switch msg.String() {
+			case "up", "k":
+				if m.attachmentCursor > 0 {
+					m.attachmentCursor--
+				}
+			case "down", "j":
+				if m.attachmentCursor < len(m.email.Attachments)-1 {
+					m.attachmentCursor++
+				}
+			case "enter":
+				if len(m.email.Attachments) > 0 {
+					selected := m.email.Attachments[m.attachmentCursor]
+					return m, func() tea.Msg {
+						return DownloadAttachmentMsg{Filename: selected.Filename, Data: selected.Data}
+					}
+				}
+			case "tab":
+				m.focusOnAttachments = false
+			}
+		} else {
+			switch msg.String() {
+			case "r":
+				return m, func() tea.Msg { return ReplyToEmailMsg{Email: m.email} }
+			case "tab":
+				if len(m.email.Attachments) > 0 {
+					m.focusOnAttachments = true
+				}
 			}
 		}
 	case tea.WindowSizeMsg:
 		header := fmt.Sprintf("From: %s\nSubject: %s", m.email.From, m.email.Subject)
 		headerHeight := lipgloss.Height(header) + 2
+		attachmentHeight := 0
+		if len(m.email.Attachments) > 0 {
+			attachmentHeight = len(m.email.Attachments) + 2
+		}
 		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - headerHeight
+		m.viewport.Height = msg.Height - headerHeight - attachmentHeight
 	}
+
 	m.viewport, cmd = m.viewport.Update(msg)
-	return m, cmd
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
 }
 
 func (m *EmailView) View() string {
 	header := fmt.Sprintf("From: %s\nSubject: %s", m.email.From, m.email.Subject)
 	styledHeader := emailHeaderStyle.Width(m.viewport.Width).Render(header)
-	help := helpStyle.Render("r: reply • esc: back to inbox")
-	return fmt.Sprintf("%s\n%s\n%s", styledHeader, m.viewport.View(), help)
+
+	var help string
+	if m.focusOnAttachments {
+		help = helpStyle.Render("↑/↓: navigate • enter: download • esc/tab: back to email body")
+	} else {
+		help = helpStyle.Render("r: reply • tab: focus attachments • esc: back to inbox")
+	}
+
+	var attachmentView string
+	if len(m.email.Attachments) > 0 {
+		var b strings.Builder
+		b.WriteString("Attachments:\n")
+		for i, attachment := range m.email.Attachments {
+			cursor := "  "
+			style := itemStyle
+			if m.focusOnAttachments && i == m.attachmentCursor {
+				cursor = "> "
+				style = selectedItemStyle
+			}
+			b.WriteString(style.Render(fmt.Sprintf("%s%s", cursor, attachment.Filename)))
+			b.WriteString("\n")
+		}
+		attachmentView = attachmentBoxStyle.Render(b.String())
+	}
+
+	return fmt.Sprintf("%s\n%s\n%s\n%s", styledHeader, m.viewport.View(), attachmentView, help)
 }
