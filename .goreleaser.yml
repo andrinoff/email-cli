@@ -1,7 +1,7 @@
 # This is the configuration file for GoReleaser.
 # It defines how your project should be built, packaged, and released.
 # For more information, see: https://goreleaser.com/customization/
-version: 1
+version: 2
 
 # The 'before' hook runs commands before the build process starts.
 before:
