@@ -13,8 +13,8 @@ type Login struct {
 }
 
 // NewLogin creates a new login model.
-func NewLogin() tea.Model {
-	m := Login{
+func NewLogin() *Login {
+	m := &Login{
 		inputs: make([]textinput.Model, 4), // Increased to 4 for provider, name, email, and password
 	}
 
@@ -47,13 +47,19 @@ func NewLogin() tea.Model {
 }
 
 // Init initializes the login model.
-func (m Login) Init() tea.Cmd {
+func (m *Login) Init() tea.Cmd {
 	return textinput.Blink
 }
 
 // Update handles messages for the login model.
-func (m Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// When the window is resized, update the width of the inputs.
+		for i := range m.inputs {
+			m.inputs[i].Width = msg.Width - 6 // Subtract for padding and prompt
+		}
+
 	case tea.KeyMsg:
 		switch msg.Type {
 		// On Enter, if we are on the last field, submit the credentials.
@@ -105,7 +111,7 @@ func (m Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View renders the login form.
-func (m Login) View() string {
+func (m *Login) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left,
 		titleStyle.Render("Account Settings"),
 		"Update your credentials.",

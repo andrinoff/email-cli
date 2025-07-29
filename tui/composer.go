@@ -49,7 +49,6 @@ func NewComposer(from string) *Composer {
 	m.bodyInput.Placeholder = "Body..."
 	m.bodyInput.Prompt = "> "
 	m.bodyInput.SetHeight(10)
-	m.bodyInput.SetWidth(60)
 
 	return m
 }
@@ -63,6 +62,13 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// When the window is resized, update the width of the inputs.
+		inputWidth := msg.Width - 6 // Subtract for padding and prompt
+		m.toInput.Width = inputWidth
+		m.subjectInput.Width = inputWidth
+		m.bodyInput.SetWidth(inputWidth)
+
 	case tea.KeyMsg:
 		switch msg.Type {
 		// IMPORTANT: Removed tea.KeyEsc from this case
