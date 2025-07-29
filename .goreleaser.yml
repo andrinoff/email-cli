@@ -71,8 +71,6 @@ release:
 
 brews:
   - name: email-cli
-    homepage: "https://github.com/andrinoff/email-cli"
-    description: "A beautiful and functional email client for your terminal."
     tap:
       owner: andrinoff
       name: homebrew-email-cli
@@ -80,7 +78,10 @@ brews:
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
-    install: |
-      bin.install "email-cli"
+    description: "A beautiful and functional email client for your terminal."
+    homepage: "https://github.com/andrinoff/email-cli"
+    dependencies: []
     test: |
       system "#{bin}/email-cli --version"
+    install: |
+      bin.install "email-cli"
