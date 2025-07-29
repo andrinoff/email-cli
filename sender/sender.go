@@ -26,8 +26,8 @@ func generateMessageID(from string) string {
 	return fmt.Sprintf("<%x@%s>", buf, from)
 }
 
-// SendEmail constructs a multipart message with plain text, HTML, and embedded images.
-func SendEmail(cfg *config.Config, to []string, subject, plainBody, htmlBody string, images map[string][]byte, inReplyTo string, references []string) error {
+// SendEmail constructs a multipart message with plain text, HTML, embedded images, and attachments.
+func SendEmail(cfg *config.Config, to []string, subject, plainBody, htmlBody string, images map[string][]byte, attachments map[string][]byte, inReplyTo string, references []string) error {
 	var smtpServer string
 	var smtpPort int
 
@@ -53,19 +53,18 @@ func SendEmail(cfg *config.Config, to []string, subject, plainBody, htmlBody str
 	var msg bytes.Buffer
 	mainWriter := multipart.NewWriter(&msg)
 
-	// Set top-level headers for multipart/related
+	// Set top-level headers for a mixed message type to support content and attachments
 	headers := map[string]string{
 		"From":         fromHeader,
 		"To":           to[0],
 		"Subject":      subject,
 		"Date":         time.Now().Format(time.RFC1123Z),
 		"Message-ID":   generateMessageID(cfg.Email),
-		"Content-Type": "multipart/related; boundary=" + mainWriter.Boundary(),
+		"Content-Type": "multipart/mixed; boundary=" + mainWriter.Boundary(),
 	}
 
 	if inReplyTo != "" {
 		headers["In-Reply-To"] = inReplyTo
-		// When replying, the references should be the previous references plus the message-id of the email we're replying to.
 		if len(references) > 0 {
 			headers["References"] = strings.Join(references, " ") + " " + inReplyTo
 		} else {
@@ -78,41 +77,48 @@ func SendEmail(cfg *config.Config, to []string, subject, plainBody, htmlBody str
 	}
 	fmt.Fprintf(&msg, "\r\n") // End of headers
 
-	// Create the multipart/alternative part as a nested part
-	altHeader := textproto.MIMEHeader{}
-	altBoundary := "alt-" + mainWriter.Boundary()
-	altHeader.Set("Content-Type", "multipart/alternative; boundary="+altBoundary)
-	altPartWriter, err := mainWriter.CreatePart(altHeader)
+	// --- Body Part (multipart/related) ---
+	// This part contains the multipart/alternative (text/html) and any inline images.
+	relatedHeader := textproto.MIMEHeader{}
+	relatedBoundary := "related-" + mainWriter.Boundary()
+	relatedHeader.Set("Content-Type", "multipart/related; boundary="+relatedBoundary)
+	relatedPartWriter, err := mainWriter.CreatePart(relatedHeader)
 	if err != nil {
 		return err
 	}
+	relatedWriter := multipart.NewWriter(relatedPartWriter)
+	relatedWriter.SetBoundary(relatedBoundary)
 
+	// --- Alternative Part (text and html) ---
+	altHeader := textproto.MIMEHeader{}
+	altBoundary := "alt-" + mainWriter.Boundary()
+	altHeader.Set("Content-Type", "multipart/alternative; boundary="+altBoundary)
+	altPartWriter, err := relatedWriter.CreatePart(altHeader)
+	if err != nil {
+		return err
+	}
 	altWriter := multipart.NewWriter(altPartWriter)
 	altWriter.SetBoundary(altBoundary)
 
-	// Create plain text part inside multipart/alternative
-	textHeader := textproto.MIMEHeader{}
-	textHeader.Set("Content-Type", "text/plain; charset=UTF-8")
-	textPart, err := altWriter.CreatePart(textHeader)
+	// Plain text part
+	textPart, err := altWriter.CreatePart(textproto.MIMEHeader{"Content-Type": {"text/plain; charset=UTF-8"}})
 	if err != nil {
 		return err
 	}
 	fmt.Fprint(textPart, plainBody)
 
-	// Create HTML part inside multipart/alternative
-	htmlHeader := textproto.MIMEHeader{}
-	htmlHeader.Set("Content-Type", "text/html; charset=UTF-8")
-	htmlPart, err := altWriter.CreatePart(htmlHeader)
+	// HTML part
+	htmlPart, err := altWriter.CreatePart(textproto.MIMEHeader{"Content-Type": {"text/html; charset=UTF-8"}})
 	if err != nil {
 		return err
 	}
 	fmt.Fprint(htmlPart, htmlBody)
 
-	altWriter.Close()
+	altWriter.Close() // Finish the alternative part
 
-	// Attach images to the main multipart/related part
+	// --- Inline Images ---
 	for cid, data := range images {
-		ext := filepath.Ext(strings.Split(cid, "@")[0]) // Extract extension from CID
+		ext := filepath.Ext(strings.Split(cid, "@")[0])
 		mimeType := mime.TypeByExtension(ext)
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
@@ -124,18 +130,36 @@ func SendEmail(cfg *config.Config, to []string, subject, plainBody, htmlBody str
 		imgHeader.Set("Content-ID", "<"+cid+">")
 		imgHeader.Set("Content-Disposition", "inline; filename=\""+cid+"\"")
 
-		imgPart, err := mainWriter.CreatePart(imgHeader)
+		imgPart, err := relatedWriter.CreatePart(imgHeader)
 		if err != nil {
 			return err
 		}
-		decodedData, err := base64.StdEncoding.DecodeString(string(data))
-		if err != nil {
-			return err
-		}
-		imgPart.Write(decodedData)
+		imgPart.Write(data) // data is already base64 encoded
 	}
 
-	mainWriter.Close()
+	relatedWriter.Close() // Finish the related part
+
+	// --- Attachments ---
+	for filename, data := range attachments {
+		mimeType := mime.TypeByExtension(filepath.Ext(filename))
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+
+		partHeader := textproto.MIMEHeader{}
+		partHeader.Set("Content-Type", mimeType)
+		partHeader.Set("Content-Transfer-Encoding", "base64")
+		partHeader.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+
+		attachmentPart, err := mainWriter.CreatePart(partHeader)
+		if err != nil {
+			return err
+		}
+		encodedData := base64.StdEncoding.EncodeToString(data)
+		attachmentPart.Write([]byte(encodedData))
+	}
+
+	mainWriter.Close() // Finish the main message
 
 	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
 	return smtp.SendMail(addr, auth, cfg.Email, to, msg.Bytes())

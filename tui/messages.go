@@ -9,11 +9,12 @@ type ViewEmailMsg struct {
 
 // A message to indicate that an email has been sent.
 type SendEmailMsg struct {
-	To         string
-	Subject    string
-	Body       string
-	InReplyTo  string
-	References []string
+	To             string
+	Subject        string
+	Body           string
+	AttachmentPath string
+	InReplyTo      string
+	References     []string
 }
 
 // A message to indicate that the user has entered their credentials.
@@ -79,3 +80,16 @@ type ReplyToEmailMsg struct {
 
 // A message to set the composer cursor to the start.
 type SetComposerCursorToStartMsg struct{}
+
+// --- File Picker Messages ---
+
+// A message to open the file picker.
+type GoToFilePickerMsg struct{}
+
+// A message sent when a file has been selected.
+type FileSelectedMsg struct {
+	Path string
+}
+
+// A message to cancel the file picker and return to the previous view.
+type CancelFilePickerMsg struct{}

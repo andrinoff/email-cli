@@ -28,18 +28,18 @@ const (
 
 // mainModel holds the state for the entire application.
 type mainModel struct {
-	current tea.Model
-	config  *config.Config
-	emails  []fetcher.Email
-	inbox   *tui.Inbox
-	width   int
-	height  int
-	err     error
+	current       tea.Model
+	previousModel tea.Model // To store the view before opening the file picker
+	config        *config.Config
+	emails        []fetcher.Email
+	inbox         *tui.Inbox
+	width         int
+	height        int
+	err           error
 }
 
 // newInitialModel returns a pointer to the initial model.
 func newInitialModel(cfg *config.Config) *mainModel {
-	// If config is nil, start with the login screen.
 	if cfg == nil {
 		return &mainModel{
 			current: tui.NewLogin(),
@@ -63,7 +63,6 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Pass the window size message to the current view.
 		m.current, cmd = m.current.Update(msg)
 		cmds = append(cmds, cmd)
 		return m, tea.Batch(cmds...)
@@ -72,19 +71,20 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
-		// Allow ESC to navigate back.
 		if msg.String() == "esc" {
+			// If we are in a nested view like email or file picker, handle it here
 			switch m.current.(type) {
 			case *tui.EmailView:
-				m.current = m.inbox // Go back to the cached inbox.
+				m.current = m.inbox
 				return m, nil
+			case *tui.FilePicker:
+				return m, func() tea.Msg { return tui.CancelFilePickerMsg{} }
 			case *tui.Inbox, *tui.Composer, *tui.Login:
-				m.current = tui.NewChoice() // Go back to the main menu.
+				m.current = tui.NewChoice()
 				return m, m.current.Init()
 			}
 		}
 
-	// --- Custom Messages for Switching Views and Pagination ---
 	case tui.Credentials:
 		cfg := &config.Config{
 			ServiceProvider: msg.Provider,
@@ -108,7 +108,6 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.emails = msg.Emails
 		m.inbox = tui.NewInbox(m.emails)
 		m.current = m.inbox
-		// Manually set the size of the new view.
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
 
@@ -119,7 +118,6 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tui.EmailsAppendedMsg:
 		m.emails = append(m.emails, msg.Emails...)
-		// Pass the new emails to the inbox to be appended.
 		m.current, cmd = m.current.Update(msg)
 		cmds = append(cmds, cmd)
 		return m, tea.Batch(cmds...)
@@ -146,10 +144,31 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.current = tui.NewComposer(m.config.Email, to, subject, body)
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		cmds = append(cmds, m.current.Init())
-		// This is a reply, so we'll need to pass the message ID and references.
-		// We'll add this to the SendEmailMsg that gets created when the user hits send.
-		// We'll modify the composer so that when it creates a SendEmailMsg, it can be passed
-		// the InReplyTo and References.
+
+	case tui.GoToFilePickerMsg:
+		m.previousModel = m.current
+		wd, _ := os.Getwd()
+		m.current = tui.NewFilePicker(wd)
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
+
+	case tui.FileSelectedMsg:
+		if m.previousModel != nil {
+			// Send the selection message to the previous model (the composer)
+			m.previousModel, cmd = m.previousModel.Update(msg)
+			cmds = append(cmds, cmd)
+			// Return to the composer view
+			m.current = m.previousModel
+			m.previousModel = nil
+		}
+		return m, tea.Batch(cmds...)
+
+	case tui.CancelFilePickerMsg:
+		if m.previousModel != nil {
+			m.current = m.previousModel
+			m.previousModel = nil
+		}
+		return m, nil
 
 	case tui.SendEmailMsg:
 		m.current = tui.NewStatus("Sending email...")
@@ -160,7 +179,6 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.current.Init())
 	}
 
-	// Pass all other messages to the current view.
 	m.current, cmd = m.current.Update(msg)
 	cmds = append(cmds, cmd)
 
@@ -171,40 +189,36 @@ func (m *mainModel) View() string {
 	return m.current.View()
 }
 
-// markdownToHTML converts a Markdown string to an HTML string.
 func markdownToHTML(md []byte) []byte {
 	var buf bytes.Buffer
 	p := goldmark.New(
 		goldmark.WithRendererOptions(
-			html.WithUnsafe(), // Allow raw HTML in email.
+			html.WithUnsafe(),
 		),
 	)
 	if err := p.Convert(md, &buf); err != nil {
-		return md // Fallback to original markdown.
+		return md
 	}
 	return buf.Bytes()
 }
 
-// sendEmail finds local image paths, embeds them, and sends the email.
 func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 	return func() tea.Msg {
 		recipients := []string{msg.To}
 		body := msg.Body
 		images := make(map[string][]byte)
+		attachments := make(map[string][]byte)
 
-		// Find all markdown image tags.
 		re := regexp.MustCompile(`!\[.*?\]\((.*?)\)`)
 		matches := re.FindAllStringSubmatch(body, -1)
 
 		for _, match := range matches {
 			imgPath := match[1]
-			imgData, err := os.ReadFile(imgPath) // Use os.ReadFile.
+			imgData, err := os.ReadFile(imgPath)
 			if err != nil {
 				log.Printf("Could not read image file %s: %v", imgPath, err)
 				continue
 			}
-
-			// Create a unique CID that includes the file extension.
 			cid := fmt.Sprintf("%s%s@%s", uuid.NewString(), filepath.Ext(imgPath), "email-cli")
 			images[cid] = []byte(base64.StdEncoding.EncodeToString(imgData))
 			body = strings.Replace(body, imgPath, "cid:"+cid, 1)
@@ -212,7 +226,17 @@ func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 
 		htmlBody := markdownToHTML([]byte(body))
 
-		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body, string(htmlBody), images, msg.InReplyTo, msg.References)
+		if msg.AttachmentPath != "" {
+			fileData, err := os.ReadFile(msg.AttachmentPath)
+			if err != nil {
+				log.Printf("Could not read attachment file %s: %v", msg.AttachmentPath, err)
+			} else {
+				_, filename := filepath.Split(msg.AttachmentPath)
+				attachments[filename] = fileData
+			}
+		}
+
+		err := sender.SendEmail(cfg, recipients, msg.Subject, msg.Body, string(htmlBody), images, attachments, msg.InReplyTo, msg.References)
 		if err != nil {
 			log.Printf("Failed to send email: %v", err)
 			return tui.EmailResultMsg{Err: err}
@@ -222,7 +246,6 @@ func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 	}
 }
 
-// fetchEmails retrieves emails in the background and dispatches the correct message.
 func fetchEmails(cfg *config.Config, limit, offset uint32) tea.Cmd {
 	return func() tea.Msg {
 		emails, err := fetcher.FetchEmails(cfg, limit, offset)
@@ -230,10 +253,8 @@ func fetchEmails(cfg *config.Config, limit, offset uint32) tea.Cmd {
 			return tui.FetchErr(err)
 		}
 		if offset == 0 {
-			// This is the initial fetch.
 			return tui.EmailsFetchedMsg{Emails: emails}
 		}
-		// This is a subsequent fetch for pagination.
 		return tui.EmailsAppendedMsg{Emails: emails}
 	}
 }
@@ -242,7 +263,6 @@ func main() {
 	cfg, err := config.LoadConfig()
 	var initialModel *mainModel
 	if err != nil {
-		// If config doesn't exist, guide the user to create one via the login view.
 		initialModel = newInitialModel(nil)
 	} else {
 		initialModel = newInitialModel(cfg)

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,15 +18,17 @@ var (
 	focusedButton       = focusedStyle.Copy().Render("[ Send ]")
 	blurredButton       = blurredStyle.Copy().Render("[ Send ]")
 	emailRecipientStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+	attachmentStyle     = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("240"))
 )
 
 // Composer model holds the state of the email composition UI.
 type Composer struct {
-	focusIndex   int
-	toInput      textinput.Model
-	subjectInput textinput.Model
-	bodyInput    textarea.Model
-	fromAddr     string
+	focusIndex     int
+	toInput        textinput.Model
+	subjectInput   textinput.Model
+	bodyInput      textarea.Model
+	attachmentPath string
+	fromAddr       string
 }
 
 // NewComposer initializes a new composer model.
@@ -52,7 +56,7 @@ func NewComposer(from, to, subject, body string) *Composer {
 	m.bodyInput.SetValue(body)
 	m.bodyInput.Prompt = "> "
 	m.bodyInput.SetHeight(10)
-	m.bodyInput.SetCursor(0) // Set cursor to the beginning on creation
+	m.bodyInput.SetCursor(0)
 
 	return m
 }
@@ -67,14 +71,17 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// When the window is resized, update the width of the inputs.
-		inputWidth := msg.Width - 6 // Subtract for padding and prompt
+		inputWidth := msg.Width - 6
 		m.toInput.Width = inputWidth
 		m.subjectInput.Width = inputWidth
 		m.bodyInput.SetWidth(inputWidth)
 
 	case SetComposerCursorToStartMsg:
 		m.bodyInput.SetCursor(0)
+		return m, nil
+
+	case FileSelectedMsg:
+		m.attachmentPath = msg.Path
 		return m, nil
 
 	case tea.KeyMsg:
@@ -89,19 +96,16 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focusIndex++
 			}
 
-			// Wrap around
-			if m.focusIndex > 3 { // 3 is the Send button
+			if m.focusIndex > 4 { // 4 is the Send button
 				m.focusIndex = 0
 			} else if m.focusIndex < 0 {
-				m.focusIndex = 3
+				m.focusIndex = 4
 			}
 
-			// Blur all inputs
 			m.toInput.Blur()
 			m.subjectInput.Blur()
 			m.bodyInput.Blur()
 
-			// Focus the correct input
 			switch m.focusIndex {
 			case 0:
 				cmds = append(cmds, m.toInput.Focus())
@@ -109,25 +113,27 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, m.subjectInput.Focus())
 			case 2:
 				cmds = append(cmds, m.bodyInput.Focus())
-				// Send a message to explicitly set the cursor position AFTER focus.
 				cmds = append(cmds, func() tea.Msg { return SetComposerCursorToStartMsg{} })
 			}
 			return m, tea.Batch(cmds...)
 
 		case tea.KeyEnter:
-			if m.focusIndex == 3 {
+			if m.focusIndex == 3 { // Attachment field focused
+				return m, func() tea.Msg { return GoToFilePickerMsg{} }
+			}
+			if m.focusIndex == 4 { // Send button focused
 				return m, func() tea.Msg {
 					return SendEmailMsg{
-						To:      m.toInput.Value(),
-						Subject: m.subjectInput.Value(),
-						Body:    m.bodyInput.Value(),
+						To:             m.toInput.Value(),
+						Subject:        m.subjectInput.Value(),
+						Body:           m.bodyInput.Value(),
+						AttachmentPath: m.attachmentPath,
 					}
 				}
 			}
 		}
 	}
 
-	// Update the focused input.
 	switch m.focusIndex {
 	case 0:
 		m.toInput, cmd = m.toInput.Update(msg)
@@ -143,11 +149,24 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// View renders the UI.
 func (m *Composer) View() string {
-	button := &blurredButton
-	if m.focusIndex == 3 {
-		button = &focusedButton
+	var button string
+	if m.focusIndex == 4 { // Send button
+		button = focusedButton
+	} else {
+		button = blurredButton
+	}
+
+	var attachmentField string
+	attachmentText := "None (Press Enter to select)"
+	if m.attachmentPath != "" {
+		attachmentText = m.attachmentPath
+	}
+
+	if m.focusIndex == 3 { // Attachment field
+		attachmentField = focusedStyle.Render(fmt.Sprintf("> Attachment: %s", attachmentText))
+	} else {
+		attachmentField = blurredStyle.Render(fmt.Sprintf("  Attachment: %s", attachmentText))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left,
@@ -156,7 +175,8 @@ func (m *Composer) View() string {
 		m.toInput.View(),
 		m.subjectInput.View(),
 		m.bodyInput.View(),
-		*button,
+		attachmentStyle.Render(attachmentField),
+		button,
 		helpStyle.Render("Markdown/HTML • tab: next field • esc: back to menu"),
 	)
 }
