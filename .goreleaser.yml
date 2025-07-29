@@ -69,9 +69,10 @@ release:
   # If set to true, will mark the release as a pre-release.
   prerelease: auto
 
-# 'brews' configures the Homebrew tap integration.
 brews:
   - name: email-cli
+    homepage: "https://github.com/andrinoff/email-cli"
+    description: "A beautiful and functional email client for your terminal."
     tap:
       owner: andrinoff
       name: homebrew-email-cli
@@ -79,10 +80,7 @@ brews:
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
-    description: "A beautiful and functional email client for your terminal."
-    homepage: "https://github.com/andrinoff/email-cli"
-    dependencies: []
-    test: |
-      system "#{bin}/email-cli --version"
     install: |
       bin.install "email-cli"
+    test: |
+      system "#{bin}/email-cli --version"
