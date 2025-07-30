@@ -34,6 +34,12 @@ email-cli
 
 to get started.
 
+### Install using Snap
+
+```bash
+snap install andrinoff.email-cli
+```
+
 ### Build from Source 🔨
 
 Email CLI is written in **Go**. To build it manually:
