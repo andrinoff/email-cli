@@ -84,7 +84,7 @@ func (m Choice) View() string {
 	}
 
 	b.WriteString("\n\n")
-	b.WriteString(helpStyle.Render("Use ↑/↓ to navigate, enter to select, and q to quit."))
+	b.WriteString(helpStyle.Render("Use ↑/↓ to navigate, enter to select, and ctrl+c to quit."))
 
 	return docStyle.Render(b.String())
 }

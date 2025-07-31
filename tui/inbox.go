@@ -78,8 +78,11 @@ func NewInbox(emails []fetcher.Email) *Inbox {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
+			key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl + c", "quit")),
 		}
 	}
+
+	l.KeyMap.Quit.SetEnabled(false)
 
 	return &Inbox{
 		list:        l,
