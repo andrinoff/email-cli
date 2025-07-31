@@ -88,8 +88,10 @@ type EmailActionDoneMsg struct {
 type GoToChoiceMenuMsg struct{}
 
 type DownloadAttachmentMsg struct {
+	Index    int
 	Filename string
-	Data     []byte
+	PartID   string
+	Data     []byte 
 }
 
 type AttachmentDownloadedMsg struct {

@@ -234,7 +234,8 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.DownloadAttachmentMsg:
 		m.previousModel = m.current
 		m.current = tui.NewStatus(fmt.Sprintf("Downloading %s...", msg.Filename))
-		return m, tea.Batch(m.current.Init(), downloadAttachmentCmd(msg))
+		// Use the new FetchAttachment function
+		return m, tea.Batch(m.current.Init(), downloadAttachmentCmd(m.config, m.emails[msg.Index].UID, msg))
 
 	case tui.AttachmentDownloadedMsg:
 		var statusMsg string
@@ -359,8 +360,13 @@ func archiveEmailCmd(cfg *config.Config, uid uint32) tea.Cmd {
 	}
 }
 
-func downloadAttachmentCmd(msg tui.DownloadAttachmentMsg) tea.Cmd {
+func downloadAttachmentCmd(cfg *config.Config, uid uint32, msg tui.DownloadAttachmentMsg) tea.Cmd {
 	return func() tea.Msg {
+		data, err := fetcher.FetchAttachment(cfg, uid, msg.PartID)
+		if err != nil {
+			return tui.AttachmentDownloadedMsg{Err: err}
+		}
+
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return tui.AttachmentDownloadedMsg{Err: err}
@@ -372,7 +378,7 @@ func downloadAttachmentCmd(msg tui.DownloadAttachmentMsg) tea.Cmd {
 			}
 		}
 		filePath := filepath.Join(downloadsPath, msg.Filename)
-		err = os.WriteFile(filePath, msg.Data, 0644)
+		err = os.WriteFile(filePath, data, 0644)
 		return tui.AttachmentDownloadedMsg{Path: filePath, Err: err}
 	}
 }
