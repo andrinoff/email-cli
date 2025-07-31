@@ -41,7 +41,9 @@ jobs:
         run: sudo snap install snapcraft --classic
 
       - name: Clean Snapcraft cache
-        run: rm -rf ~/.cache/snapcraft
+        run: |
+          sudo rm -rf /home/runner/.cache/snapcraft
+          sudo rm -rf /root/.cache/snapcraft || true
 
       - name: Run GoReleaser
         if: steps.tag_version.outputs.new_tag
