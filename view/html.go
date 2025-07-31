@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/renderer/html"
 )
@@ -46,14 +47,12 @@ func markdownToHTML(md []byte) []byte {
 
 // ProcessBody takes a raw email body, decodes it, and formats it as plain
 // text with terminal hyperlinks.
-func ProcessBody(rawBody string) (string, error) {
+func ProcessBody(rawBody string, h1Style, h2Style, bodyStyle lipgloss.Style) (string, error) {
 	decodedBody, err := decodeQuotedPrintable(rawBody)
 	if err != nil {
-		// If decoding fails, fallback to the raw body
 		decodedBody = rawBody
 	}
 
-	// Convert markdown to HTML before processing
 	htmlBody := markdownToHTML([]byte(decodedBody))
 
 	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(htmlBody))
@@ -61,11 +60,19 @@ func ProcessBody(rawBody string) (string, error) {
 		return "", fmt.Errorf("could not parse email body: %w", err)
 	}
 
-	// Remove style and script tags to clean up the view
 	doc.Find("style, script").Remove()
 
+	// Style headers
+	doc.Find("h1").Each(func(i int, s *goquery.Selection) {
+		s.SetText(h1Style.Render(s.Text()))
+	})
+
+	doc.Find("h2").Each(func(i int, s *goquery.Selection) {
+		s.SetText(h2Style.Render(s.Text()))
+	})
+
 	// Add newlines after block elements for better spacing
-	doc.Find("p, div, h1, h2, h3, h4, h5, h6").Each(func(i int, s *goquery.Selection) {
+	doc.Find("p, div").Each(func(i int, s *goquery.Selection) {
 		s.After("\n\n")
 	})
 
@@ -74,7 +81,7 @@ func ProcessBody(rawBody string) (string, error) {
 		s.ReplaceWithHtml("\n")
 	})
 
-	// Format links into terminal hyperlinks
+	// Format links and images
 	doc.Find("a").Each(func(i int, s *goquery.Selection) {
 		href, exists := s.Attr("href")
 		if !exists {
@@ -83,26 +90,21 @@ func ProcessBody(rawBody string) (string, error) {
 		s.ReplaceWithHtml(hyperlink(href, s.Text()))
 	})
 
-	// Format images into terminal hyperlinks
 	doc.Find("img").Each(func(i int, s *goquery.Selection) {
 		src, exists := s.Attr("src")
 		if !exists {
 			return
 		}
 		alt, _ := s.Attr("alt")
-
 		if alt == "" {
 			alt = "Does not contain alt text"
 		}
 		s.ReplaceWithHtml(hyperlink(src, fmt.Sprintf("\n [Click here to view image: %s] \n", alt)))
 	})
 
-	// Get the document's text content, which now includes our formatting
 	text := doc.Text()
 
-	// Collapse more than 2 consecutive newlines into 2
 	re := regexp.MustCompile(`\n{3,}`)
 	text = re.ReplaceAllString(text, "\n\n")
-
-	return text, nil
+	return bodyStyle.Render(text), nil
 }

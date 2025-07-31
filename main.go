@@ -152,6 +152,21 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.current.Init()
 
 	case tui.ViewEmailMsg:
+		// Show a status message while fetching the email body
+		m.current = tui.NewStatus("Fetching email content...")
+		// Pass the index directly to the command
+		return m, tea.Batch(m.current.Init(), fetchEmailBodyCmd(m.config, m.emails[msg.Index], msg.Index))
+
+	case tui.EmailBodyFetchedMsg:
+		if msg.Err != nil {
+			log.Printf("could not fetch email body: %v", msg.Err)
+			m.current = m.inbox
+			return m, nil
+		}
+		// Use the index from the message to update the correct email
+		m.emails[msg.Index].Body = msg.Body
+		m.emails[msg.Index].Attachments = msg.Attachments
+
 		emailView := tui.NewEmailView(m.emails[msg.Index], m.width, m.height)
 		m.current = emailView
 		return m, m.current.Init()
@@ -219,7 +234,8 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.DownloadAttachmentMsg:
 		m.previousModel = m.current
 		m.current = tui.NewStatus(fmt.Sprintf("Downloading %s...", msg.Filename))
-		return m, tea.Batch(m.current.Init(), downloadAttachmentCmd(msg))
+		// Use the new FetchAttachment function
+		return m, tea.Batch(m.current.Init(), downloadAttachmentCmd(m.config, m.emails[msg.Index].UID, msg))
 
 	case tui.AttachmentDownloadedMsg:
 		var statusMsg string
@@ -246,6 +262,22 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *mainModel) View() string {
 	return m.current.View()
+}
+
+func fetchEmailBodyCmd(cfg *config.Config, email fetcher.Email, index int) tea.Cmd {
+	return func() tea.Msg {
+		body, attachments, err := fetcher.FetchEmailBody(cfg, email.UID)
+		if err != nil {
+			return tui.EmailBodyFetchedMsg{Index: index, Err: err}
+		}
+
+		// Return the fetched data along with the original index
+		return tui.EmailBodyFetchedMsg{
+			Index:       index,
+			Body:        body,
+			Attachments: attachments,
+		}
+	}
 }
 
 func markdownToHTML(md []byte) []byte {
@@ -327,8 +359,13 @@ func archiveEmailCmd(cfg *config.Config, uid uint32) tea.Cmd {
 	}
 }
 
-func downloadAttachmentCmd(msg tui.DownloadAttachmentMsg) tea.Cmd {
+func downloadAttachmentCmd(cfg *config.Config, uid uint32, msg tui.DownloadAttachmentMsg) tea.Cmd {
 	return func() tea.Msg {
+		data, err := fetcher.FetchAttachment(cfg, uid, msg.PartID)
+		if err != nil {
+			return tui.AttachmentDownloadedMsg{Err: err}
+		}
+
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return tui.AttachmentDownloadedMsg{Err: err}
@@ -340,7 +377,7 @@ func downloadAttachmentCmd(msg tui.DownloadAttachmentMsg) tea.Cmd {
 			}
 		}
 		filePath := filepath.Join(downloadsPath, msg.Filename)
-		err = os.WriteFile(filePath, msg.Data, 0644)
+		err = os.WriteFile(filePath, data, 0644)
 		return tui.AttachmentDownloadedMsg{Path: filePath, Err: err}
 	}
 }

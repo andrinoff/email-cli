@@ -24,7 +24,8 @@ type EmailView struct {
 }
 
 func NewEmailView(email fetcher.Email, width, height int) *EmailView {
-	body, err := view.ProcessBody(email.Body)
+	// Pass the styles from the tui package to the view package
+	body, err := view.ProcessBody(email.Body, H1Style, H2Style, BodyStyle)
 	if err != nil {
 		body = fmt.Sprintf("Error rendering body: %v", err)
 	}
@@ -32,10 +33,9 @@ func NewEmailView(email fetcher.Email, width, height int) *EmailView {
 	header := fmt.Sprintf("From: %s\nSubject: %s", email.From, email.Subject)
 	headerHeight := lipgloss.Height(header) + 2
 
-	// Calculate height for attachments if they exist
 	attachmentHeight := 0
 	if len(email.Attachments) > 0 {
-		attachmentHeight = len(email.Attachments) + 2 // +2 for title and border
+		attachmentHeight = len(email.Attachments) + 2
 	}
 
 	vp := viewport.New(width, height-headerHeight-attachmentHeight)
