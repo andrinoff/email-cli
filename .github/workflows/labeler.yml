@@ -10,8 +10,10 @@ jobs:
       issues: write
     steps:
       - name: Label issues
-        uses: github/issue-labeler@v1
+        # Update the action to the latest version
+        uses: github/issue-labeler@v5
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          # Correct the path to your configuration file
           configuration-path: .github/labeler-config.yml
           not-before: "2023-01-01T00:00:00Z" # Optional: only run on new issues
