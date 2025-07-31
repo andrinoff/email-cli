@@ -10,13 +10,13 @@ import (
 
 var (
 	DialogBoxStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#874BFD")).
-		Padding(1, 0).
-		BorderTop(true).
-		BorderLeft(true).
-		BorderRight(true).
-		BorderBottom(true)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#874BFD")).
+			Padding(1, 0).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(true).
+			BorderBottom(true)
 
 	HelpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	SuccessStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
@@ -27,15 +27,15 @@ var DocStyle = lipgloss.NewStyle().Margin(1, 2)
 
 // A simple model for showing a status message
 type Status struct {
-    spinner spinner.Model
-    message string
+	spinner spinner.Model
+	message string
 }
 
 func NewStatus(msg string) Status {
-    s := spinner.New()
-    s.Spinner = spinner.Dot
-    s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-    return Status{spinner: s, message: msg}
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	return Status{spinner: s, message: msg}
 }
 
 func (m Status) Init() tea.Cmd { return m.spinner.Tick }

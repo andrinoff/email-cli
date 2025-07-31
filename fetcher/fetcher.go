@@ -266,27 +266,27 @@ func moveEmail(cfg *config.Config, uid uint32, destMailbox string) error {
 }
 
 func DeleteEmail(cfg *config.Config, uid uint32) error {
-    c, err := connect(cfg)
-    if err != nil {
-        return err
-    }
-    defer c.Logout()
+	c, err := connect(cfg)
+	if err != nil {
+		return err
+	}
+	defer c.Logout()
 
-    if _, err := c.Select("INBOX", false); err != nil {
-        return err
-    }
+	if _, err := c.Select("INBOX", false); err != nil {
+		return err
+	}
 
-    seqSet := new(imap.SeqSet)
-    seqSet.AddNum(uid)
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
 
-    item := imap.FormatFlagsOp(imap.AddFlags, true)
-    flags := []interface{}{imap.DeletedFlag}
+	item := imap.FormatFlagsOp(imap.AddFlags, true)
+	flags := []interface{}{imap.DeletedFlag}
 
-    if err := c.UidStore(seqSet, item, flags, nil); err != nil {
-        return err
-    }
+	if err := c.UidStore(seqSet, item, flags, nil); err != nil {
+		return err
+	}
 
-    return c.Expunge(nil)
+	return c.Expunge(nil)
 }
 
 func ArchiveEmail(cfg *config.Config, uid uint32) error {
