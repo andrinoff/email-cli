@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"mime"
 	"strings"
 	"time"
@@ -146,13 +147,28 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		done <- c.Fetch(seqset, fetchItems, messages)
 	}()
 
-	var emails []Email
+	// Collect messages from the channel into a slice
+	var msgs []*imap.Message
 	for msg := range messages {
-		if msg == nil {
+		msgs = append(msgs, msg)
+	}
+
+	// Wait for the fetch to complete and check for errors
+	if err := <-done; err != nil {
+		return nil, err
+	}
+
+	var emails []Email
+	for _, msg := range msgs {
+		if msg == nil || msg.Envelope == nil {
 			continue
 		}
 
-		fromAddrs := msg.Envelope.From[0].Address()
+		var fromAddr string
+		if len(msg.Envelope.From) > 0 {
+			fromAddr = msg.Envelope.From[0].Address()
+		}
+
 		var toAddrList []string
 		for _, addr := range msg.Envelope.To {
 			toAddrList = append(toAddrList, addr.Address())
@@ -160,15 +176,11 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 
 		emails = append(emails, Email{
 			UID:     msg.Uid,
-			From:    fromAddrs,
+			From:    fromAddr,
 			To:      toAddrList,
 			Subject: decodeHeader(msg.Envelope.Subject),
 			Date:    msg.Envelope.Date,
 		})
-	}
-
-	if err := <-done; err != nil {
-		return nil, err
 	}
 
 	// Reverse the order to show newest first
@@ -179,8 +191,6 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 	return emails, nil
 }
 
-
-// New function to fetch the body for a single email
 func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error) {
 	c, err := connect(cfg)
 	if err != nil {
@@ -199,12 +209,23 @@ func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error
 	done := make(chan error, 1)
 	fetchItems := []imap.FetchItem{imap.FetchItem("BODY[]")}
 	go func() {
-		done <- c.Fetch(seqset, fetchItems, messages)
+		done <- c.UidFetch(seqset, fetchItems, messages)
 	}()
 
-	msg := <-messages
-	if msg == nil {
-		return "", nil, fmt.Errorf("could not fetch email body")
+	// Wait for the fetch operation to complete first.
+	if err := <-done; err != nil {
+		return "", nil, err
+	}
+
+	// Now that the fetch is complete, check for a message.
+	var msg *imap.Message
+	select {
+	case msg = <-messages:
+		if msg == nil {
+			return "", nil, fmt.Errorf("fetched a nil message")
+		}
+	default:
+		return "", nil, fmt.Errorf("no message found with UID %d", uid)
 	}
 
 	bodyLiteral := msg.GetBody(&imap.BodySectionName{})
@@ -224,7 +245,8 @@ func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return "", nil, fmt.Errorf("error getting next part: %v", err)
+			log.Printf("Error getting next part: %v", err)
+			break
 		}
 
 		cdHeader := p.Header.Get("Content-Disposition")
@@ -256,13 +278,8 @@ func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error
 		}
 	}
 
-	if err := <-done; err != nil {
-		return "", nil, err
-	}
-
 	return body, attachments, nil
 }
-
 
 func moveEmail(cfg *config.Config, uid uint32, destMailbox string) error {
 	c, err := connect(cfg)
