@@ -176,7 +176,8 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current = m.previousModel
 			m.previousModel = nil
 		}
-		return m, nil
+		m.current, cmd = m.current.Update(msg)
+		cmds = append(cmds, cmd)
 
 	case tui.SendEmailMsg:
 		m.cachedComposer = nil // Clear cache on successful send
