@@ -1,10 +1,13 @@
 package fetcher
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"mime"
+	"mime/quotedprintable"
 	"strings"
 	"time"
 
@@ -246,7 +249,6 @@ func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error
 		partMessages := make(chan *imap.Message, 1)
 		partDone := make(chan error, 1)
 		
-		// Correctly create the fetch item as a string for your library version
 		fetchItem := imap.FetchItem(fmt.Sprintf("BODY.PEEK[%s]", textPartID))
 		section, err := imap.ParseBodySectionName(fetchItem)
 		if err != nil {
@@ -254,7 +256,6 @@ func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error
 		}
 
 		go func() {
-			// Pass the string-based fetch item
 			partDone <- c.UidFetch(seqset, []imap.FetchItem{fetchItem}, partMessages)
 		}()
 
@@ -264,11 +265,41 @@ func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error
 
 		partMsg := <-partMessages
 		if partMsg != nil {
-			// Use the parsed section to get the body from the response
 			literal := partMsg.GetBody(section)
 			if literal != nil {
-				bodyBytes, _ := ioutil.ReadAll(literal)
-				body = string(bodyBytes)
+				// The new decoding logic starts here
+				buf, _ := ioutil.ReadAll(literal)
+				mr, err := mail.CreateReader(bytes.NewReader(buf))
+				if err != nil {
+					body = string(buf)
+				} else {
+					p, err := mr.NextPart()
+					if err != nil {
+						body = string(buf)
+					} else {
+						encoding := p.Header.Get("Content-Transfer-Encoding")
+						bodyBytes, _ := ioutil.ReadAll(p.Body)
+
+						switch strings.ToLower(encoding) {
+						case "base64":
+							decoded, err := base64.StdEncoding.DecodeString(string(bodyBytes))
+							if err == nil {
+								body = string(decoded)
+							} else {
+								body = string(bodyBytes)
+							}
+						case "quoted-printable":
+							decoded, err := ioutil.ReadAll(quotedprintable.NewReader(strings.NewReader(string(bodyBytes))))
+							if err == nil {
+								body = string(decoded)
+							} else {
+								body = string(bodyBytes)
+							}
+						default:
+							body = string(bodyBytes)
+						}
+					}
+				}
 			}
 		}
 	}
