@@ -1,5 +1,7 @@
 # Email CLI 🦫
 
+<div align="center">
+
 ---
 
 <img src = "assets/logo.png" width=200 height=200>
@@ -17,6 +19,8 @@
 A beautiful and functional email client for your terminal, built with Go and the charming Bubble Tea TUI library. Never leave your command line to check your inbox or send an email again!
 
 ![Main Menu Screenshot](assets/preview.png)
+
+</div>
 
 ## Features ✨
 
