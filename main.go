@@ -166,7 +166,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Use the index from the message to update the correct email
 		m.emails[msg.Index].Body = msg.Body
 		m.emails[msg.Index].Attachments = msg.Attachments
-		
+
 		emailView := tui.NewEmailView(m.emails[msg.Index], m.width, m.height)
 		m.current = emailView
 		return m, m.current.Init()
@@ -279,7 +279,6 @@ func fetchEmailBodyCmd(cfg *config.Config, email fetcher.Email, index int) tea.C
 		}
 	}
 }
-
 
 func markdownToHTML(md []byte) []byte {
 	var buf bytes.Buffer

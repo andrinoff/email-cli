@@ -248,7 +248,7 @@ func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error
 	if textPartID != "" {
 		partMessages := make(chan *imap.Message, 1)
 		partDone := make(chan error, 1)
-		
+
 		fetchItem := imap.FetchItem(fmt.Sprintf("BODY.PEEK[%s]", textPartID))
 		section, err := imap.ParseBodySectionName(fetchItem)
 		if err != nil {

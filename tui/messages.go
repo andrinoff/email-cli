@@ -91,7 +91,7 @@ type DownloadAttachmentMsg struct {
 	Index    int
 	Filename string
 	PartID   string
-	Data     []byte 
+	Data     []byte
 }
 
 type AttachmentDownloadedMsg struct {

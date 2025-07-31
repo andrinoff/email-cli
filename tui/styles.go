@@ -33,7 +33,7 @@ var (
 		Align(lipgloss.Center)
 
 	BodyStyle = lipgloss.NewStyle().
-		Bold(true) // A bit bold
+			Bold(true) // A bit bold
 )
 
 var DocStyle = lipgloss.NewStyle().Margin(1, 2)
