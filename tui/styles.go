@@ -21,6 +21,19 @@ var (
 	HelpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	SuccessStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
 	InfoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+
+	H1Style = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("205")).
+		Bold(true).
+		Align(lipgloss.Center)
+
+	H2Style = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("205")).
+		Bold(false). // Less bold
+		Align(lipgloss.Center)
+
+	BodyStyle = lipgloss.NewStyle().
+		Bold(true) // A bit bold
 )
 
 var DocStyle = lipgloss.NewStyle().Margin(1, 2)

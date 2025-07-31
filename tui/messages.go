@@ -110,3 +110,10 @@ type DiscardDraftMsg struct {
 
 // RestoreDraftMsg signals that the cached draft should be restored.
 type RestoreDraftMsg struct{}
+
+type EmailBodyFetchedMsg struct {
+	Index       int
+	Body        string
+	Attachments []fetcher.Attachment
+	Err         error
+}

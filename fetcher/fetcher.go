@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"mime"
 	"strings"
 	"time"
@@ -141,7 +140,8 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 
 	messages := make(chan *imap.Message, limit)
 	done := make(chan error, 1)
-	fetchItems := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid, imap.FetchItem("BODY[]")}
+	// Only fetch Envelope and UID for the inbox view
+	fetchItems := []imap.FetchItem{imap.FetchEnvelope, imap.FetchUid}
 	go func() {
 		done <- c.Fetch(seqset, fetchItems, messages)
 	}()
@@ -152,88 +152,18 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 			continue
 		}
 
-		bodyLiteral := msg.GetBody(&imap.BodySectionName{})
-		if bodyLiteral == nil {
-			log.Println("Could not get message body")
-			continue
-		}
-
-		mr, err := mail.CreateReader(bodyLiteral)
-		if err != nil {
-			log.Printf("Error creating mail reader: %v", err)
-			continue
-		}
-
-		header := mr.Header
-		fromAddrs, _ := header.AddressList("From")
-		toAddrs, _ := header.AddressList("To")
-		subject := decodeHeader(header.Get("Subject"))
-		date, _ := header.Date()
-		messageID := header.Get("Message-ID")
-		references := header.Get("References")
-
-		var fromAddr string
-		if len(fromAddrs) > 0 {
-			fromAddr = fromAddrs[0].Address
-		}
-
+		fromAddrs := msg.Envelope.From[0].Address()
 		var toAddrList []string
-		for _, addr := range toAddrs {
-			toAddrList = append(toAddrList, addr.Address)
-		}
-
-		var body string
-		var attachments []Attachment
-		for {
-			p, err := mr.NextPart()
-			if err == io.EOF {
-				break
-			} else if err != nil {
-				log.Printf("Error getting next part: %v", err)
-				break
-			}
-
-			// Correctly parse Content-Disposition
-			cdHeader := p.Header.Get("Content-Disposition")
-			if cdHeader != "" {
-				disposition, params, err := mime.ParseMediaType(cdHeader)
-				if err == nil && (disposition == "attachment" || disposition == "inline") {
-					filename := params["filename"]
-					if filename != "" {
-						partBody, _ := ioutil.ReadAll(p.Body)
-						encoding := p.Header.Get("Content-Transfer-Encoding")
-						if strings.ToLower(encoding) == "base64" {
-							decoded, decodeErr := base64.StdEncoding.DecodeString(string(partBody))
-							if decodeErr == nil {
-								partBody = decoded
-							}
-						}
-						attachments = append(attachments, Attachment{Filename: filename, Data: partBody})
-						continue // Skip to next part
-					}
-				}
-			}
-
-			// Process body part if not an attachment
-			mediaType, _, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
-			if (mediaType == "text/plain" || mediaType == "text/html") && body == "" {
-				decodedPart, decodeErr := decodePart(p.Body, p.Header)
-				if decodeErr == nil {
-					body = decodedPart
-				}
-			}
+		for _, addr := range msg.Envelope.To {
+			toAddrList = append(toAddrList, addr.Address())
 		}
 
 		emails = append(emails, Email{
-			UID:         msg.Uid,
-			From:        fromAddr,
-			To:          toAddrList,
-			Subject:     subject,
-			Body:        body,
-			Date:        date,
-			MessageID:   messageID,
-			References:  strings.Fields(references),
-			Attachments: attachments,
+			UID:     msg.Uid,
+			From:    fromAddrs,
+			To:      toAddrList,
+			Subject: decodeHeader(msg.Envelope.Subject),
+			Date:    msg.Envelope.Date,
 		})
 	}
 
@@ -241,12 +171,98 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		return nil, err
 	}
 
+	// Reverse the order to show newest first
 	for i, j := 0, len(emails)-1; i < j; i, j = i+1, j-1 {
 		emails[i], emails[j] = emails[j], emails[i]
 	}
 
 	return emails, nil
 }
+
+
+// New function to fetch the body for a single email
+func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error) {
+	c, err := connect(cfg)
+	if err != nil {
+		return "", nil, err
+	}
+	defer c.Logout()
+
+	if _, err := c.Select("INBOX", false); err != nil {
+		return "", nil, err
+	}
+
+	seqset := new(imap.SeqSet)
+	seqset.AddNum(uid)
+
+	messages := make(chan *imap.Message, 1)
+	done := make(chan error, 1)
+	fetchItems := []imap.FetchItem{imap.FetchItem("BODY[]")}
+	go func() {
+		done <- c.Fetch(seqset, fetchItems, messages)
+	}()
+
+	msg := <-messages
+	if msg == nil {
+		return "", nil, fmt.Errorf("could not fetch email body")
+	}
+
+	bodyLiteral := msg.GetBody(&imap.BodySectionName{})
+	if bodyLiteral == nil {
+		return "", nil, fmt.Errorf("could not get message body")
+	}
+
+	mr, err := mail.CreateReader(bodyLiteral)
+	if err != nil {
+		return "", nil, fmt.Errorf("error creating mail reader: %v", err)
+	}
+
+	var body string
+	var attachments []Attachment
+	for {
+		p, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return "", nil, fmt.Errorf("error getting next part: %v", err)
+		}
+
+		cdHeader := p.Header.Get("Content-Disposition")
+		if cdHeader != "" {
+			disposition, params, err := mime.ParseMediaType(cdHeader)
+			if err == nil && (disposition == "attachment" || disposition == "inline") {
+				filename := params["filename"]
+				if filename != "" {
+					partBody, _ := ioutil.ReadAll(p.Body)
+					encoding := p.Header.Get("Content-Transfer-Encoding")
+					if strings.ToLower(encoding) == "base64" {
+						decoded, decodeErr := base64.StdEncoding.DecodeString(string(partBody))
+						if decodeErr == nil {
+							partBody = decoded
+						}
+					}
+					attachments = append(attachments, Attachment{Filename: filename, Data: partBody})
+					continue
+				}
+			}
+		}
+
+		mediaType, _, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
+		if (mediaType == "text/plain" || mediaType == "text/html") && body == "" {
+			decodedPart, decodeErr := decodePart(p.Body, p.Header)
+			if decodeErr == nil {
+				body = decodedPart
+			}
+		}
+	}
+
+	if err := <-done; err != nil {
+		return "", nil, err
+	}
+
+	return body, attachments, nil
+}
+
 
 func moveEmail(cfg *config.Config, uid uint32, destMailbox string) error {
 	c, err := connect(cfg)
