@@ -53,7 +53,7 @@ to get started.
 ### Install using Snap
 
 ```bash
-snap install andrinoff.email-cli
+sudo snap install email-cli
 ```
 
 ### Build from Source 🔨
