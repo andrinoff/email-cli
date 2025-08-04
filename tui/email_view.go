@@ -114,7 +114,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *EmailView) View() string {
-	header := fmt.Sprintf("From: %s\nSubject: %s", m.email.From, m.email.Subject)
+	header := fmt.Sprintf("From: %s | Subject: %s", m.email.From, m.email.Subject)
 	styledHeader := emailHeaderStyle.Width(m.viewport.Width).Render(header)
 
 	var help string
