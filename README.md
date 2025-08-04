@@ -8,13 +8,26 @@
 
 ---
 
-[![Go CI](https://github.com/andrinoff/email-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/andrinoff/email-cli/actions/workflows/ci.yml) [![Go Release](https://github.com/andrinoff/email-cli/actions/workflows/release.yml/badge.svg)](https://github.com/andrinoff/email-cli/actions/workflows/release.yml) [![GitHub issues](https://img.shields.io/github/issues/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/issues)
+[![Go CI](https://github.com/andrinoff/email-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/andrinoff/email-cli/actions/workflows/ci.yml)
+[![Go Release](https://github.com/andrinoff/email-cli/actions/workflows/release.yml/badge.svg)](https://github.com/andrinoff/email-cli/actions/workflows/release.yml)
+[![GoReleaser](https://img.shields.io/badge/GoReleaser-blue?logo=goreleaser)](https://goreleaser.com)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/andrinoff/email-cli)](https://golang.org)
+[![Go Report Card](https://goreportcard.com/badge/github.com/andrinoff/email-cli)](https://goreportcard.com/report/github.com/andrinoff/email-cli)
 
-[![GitHub stars](https://img.shields.io/github/stars/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/stargazers) [![GitHub release (latest by date)](https://img.shields.io/github/v/release/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/releases) [![GoReleaser](https://img.shields.io/badge/GoReleaser-blue?logo=goreleaser)](https://goreleaser.com)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/releases)
+[![GitHub All Releases](https://img.shields.io/github/downloads/andrinoff/email-cli/total)](https://github.com/andrinoff/email-cli/releases)
+[![GitHub stars](https://img.shields.io/github/stars/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/issues)
+[![GitHub license](https://img.shields.io/github/license/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/blob/master/LICENSE)
 
-[![Go Version](https://img.shields.io/github/go-mod/go-version/andrinoff/email-cli)](https://golang.org) [![Go Report Card](https://goreportcard.com/badge/github.com/andrinoff/email-cli)](https://goreportcard.com/report/github.com/andrinoff/email-cli) [![Patreon](https://img.shields.io/badge/Patreon-F96854?logo=patreon&logoColor=white)](https://patreon.com/andrinoff)
+[![macOS](https://img.shields.io/badge/macOS-Supported-000000?logo=macos&logoColor=white)](https://www.apple.com/macos)
+[![Linux](https://img.shields.io/badge/Linux-Supported-FCC624?logo=linux&logoColor=black)](https://www.linux.org/)
+[![Homebrew](https://img.shields.io/badge/homebrew-tap-21648C.svg?logo=homebrew)](https://brew.sh)
+[![Snapcraft](https://img.shields.io/badge/snap-available-82BEA0.svg?logo=snapcraft)](https://snapcraft.io/email-cli)
 
-[![GitHub license](https://img.shields.io/github/license/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/blob/master/LICENSE) [![GitHub contributors](https://img.shields.io/github/contributors/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/graphs/contributors)
+[![Patreon](https://img.shields.io/badge/Patreon-F96854?logo=patreon&logoColor=white)](https://patreon.com/andrinoff)
+[![GitHub contributors](https://img.shields.io/github/contributors/andrinoff/email-cli)](https://github.com/andrinoff/email-cli/graphs/contributors)
+[![Built with Bubble Tea](https://img.shields.io/badge/Built%20with-Bubble%20Tea-FF75B7.svg)](https://github.com/charmbracelet/bubbletea)
 
 A beautiful and functional email client for your terminal, built with Go and the charming Bubble Tea TUI library. Never leave your command line to check your inbox or send an email again!
 
@@ -31,11 +44,13 @@ A beautiful and functional email client for your terminal, built with Go and the
 - **Secure**: Uses a local configuration file to store your credentials securely.
 - **Supported Providers**: Works with Gmail and iCloud.
 
-## Getting Started 🚀
+## Installation 🚀
 
-### Installation via Homebrew 🍺 (MacOS & Linux)
+There are several ways to install Email CLI.
 
-To install Email CLI using Homebrew, run the following commands:
+### Package Managers
+
+#### Homebrew 🍺 (macOS & Linux)
 
 ```bash
 brew tap andrinoff/email-cli
