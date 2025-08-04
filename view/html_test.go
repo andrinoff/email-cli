@@ -98,8 +98,8 @@ func TestProcessBody(t *testing.T) {
 			expected: "Click here",
 		},
 		{
-			name: "With image HTML",
-			input: `<img src="http://example.com/img.png" alt="alt text">`,
+			name:     "With image HTML",
+			input:    `<img src="http://example.com/img.png" alt="alt text">`,
 			expected: "[Click here to view image: alt text]",
 		},
 		{
@@ -113,8 +113,8 @@ func TestProcessBody(t *testing.T) {
 			expected: "Click here",
 		},
 		{
-			name: "With image Markdown",
-			input: `![alt text](http://example.com/img.png)>`,
+			name:     "With image Markdown",
+			input:    `![alt text](http://example.com/img.png)>`,
 			expected: "[Click here to view image: alt text]",
 		},
 		{
