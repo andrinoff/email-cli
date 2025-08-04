@@ -62,7 +62,8 @@ func ProcessBody(rawBody string, h1Style, h2Style, bodyStyle lipgloss.Style) (st
 
 	doc.Find("style, script").Remove()
 
-	// Style headers
+	// Style headers by setting their text content.
+	// We use SetText so the h1/h2 tags remain in the document for spacing logic.
 	doc.Find("h1").Each(func(i int, s *goquery.Selection) {
 		s.SetText(h1Style.Render(s.Text()))
 	})
@@ -71,8 +72,9 @@ func ProcessBody(rawBody string, h1Style, h2Style, bodyStyle lipgloss.Style) (st
 		s.SetText(h2Style.Render(s.Text()))
 	})
 
-	// Add newlines after block elements for better spacing
-	doc.Find("p, div").Each(func(i int, s *goquery.Selection) {
+	// Add newlines after block elements for better spacing.
+	// THIS IS THE KEY FIX: Include h1 and h2 in the selector.
+	doc.Find("p, div, h1, h2").Each(func(i int, s *goquery.Selection) {
 		s.After("\n\n")
 	})
 
@@ -106,5 +108,8 @@ func ProcessBody(rawBody string, h1Style, h2Style, bodyStyle lipgloss.Style) (st
 
 	re := regexp.MustCompile(`\n{3,}`)
 	text = re.ReplaceAllString(text, "\n\n")
+
+	text = strings.TrimSpace(text)
+
 	return bodyStyle.Render(text), nil
 }
