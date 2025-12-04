@@ -3,7 +3,7 @@ package fetcher
 import (
 	"testing"
 
-	"github.com/andrinoff/email-cli/config"
+	"github.com/floatpane/matcha/config"
 )
 
 // TestFetchEmails is an integration test that requires a live IMAP server and valid credentials.

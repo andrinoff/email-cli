@@ -1,6 +1,6 @@
-# Contributing to Email CLI
+# Contributing to Matcha
 
-First off, thank you for considering contributing to Email CLI! It's people like you that make this project great.
+First off, thank you for considering contributing to Matcha! It's people like you that make this project great.
 
 ## How Can I Contribute?
 
@@ -38,7 +38,7 @@ To get started with development, you'll need to have Go installed.
 1.  Clone the repository:
     ```bash
     git clone https://github.com/floatpane/matcha.git
-    cd email-cli
+    cd matcha
     ```
 2.  Install dependencies:
     ```bash
@@ -46,11 +46,11 @@ To get started with development, you'll need to have Go installed.
     ```
 3.  Build the project:
     ```bash
-    go build -o email-cli
+    go build -o matcha
     ```
 4.  Run the application:
     ```bash
-    ./email-cli
+    ./matcha
     ```
 
 ## Code of Conduct

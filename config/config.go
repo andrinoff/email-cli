@@ -20,7 +20,7 @@ func configDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "email-cli"), nil
+	return filepath.Join(home, ".config", "matcha"), nil
 }
 
 // configFile returns the full path to the configuration file.

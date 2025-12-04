@@ -306,7 +306,7 @@ func sendEmail(cfg *config.Config, msg tui.SendEmailMsg) tea.Cmd {
 				log.Printf("Could not read image file %s: %v", imgPath, err)
 				continue
 			}
-			cid := fmt.Sprintf("%s%s@%s", uuid.NewString(), filepath.Ext(imgPath), "email-cli")
+			cid := fmt.Sprintf("%s%s@%s", uuid.NewString(), filepath.Ext(imgPath), "matcha")
 			images[cid] = []byte(base64.StdEncoding.EncodeToString(imgData))
 			body = strings.Replace(body, imgPath, "cid:"+cid, 1)
 		}

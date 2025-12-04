@@ -1,4 +1,4 @@
-name: email-cli
+name: matcha
 base: core22 # The base snap for a modern Ubuntu LTS
 version: "0.1" # This will be replaced by GoReleaser or can be set manually
 summary: A beautiful and functional email client for your terminal.
@@ -10,14 +10,14 @@ grade: stable # must be 'stable' to release into candidate, stable channels
 confinement: strict # use 'strict' confinement for security
 
 apps:
-  email-cli:
-    command: bin/email-cli
+  matcha:
+    command: bin/matcha
     plugs:
       - network # Required for network access
       - home # To access the user's home directory for config files
 
 parts:
-  email-cli:
+  matcha:
     plugin: go
     source: .
     go-importpath: github.com/floatpane/matcha

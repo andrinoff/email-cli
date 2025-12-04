@@ -70,7 +70,7 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Choice) View() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("Email CLI") + "\n\n")
+	b.WriteString(titleStyle.Render("Matcha") + "\n\n")
 	b.WriteString(listHeader.Render("What would you like to do?"))
 	b.WriteString("\n\n")
 

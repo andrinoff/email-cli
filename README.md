@@ -1,4 +1,4 @@
-# Matcha Client 🍵
+# Matcha 🍵
 
 <div align="center">
 
@@ -23,7 +23,7 @@
 [![macOS](https://img.shields.io/badge/macOS-Supported-000000?logo=macos&logoColor=white)](https://www.apple.com/macos)
 [![Linux](https://img.shields.io/badge/Linux-Supported-FCC624?logo=linux&logoColor=black)](https://www.linux.org/)
 [![Homebrew](https://img.shields.io/badge/homebrew-tap-21648C.svg?logo=homebrew)](https://brew.sh)
-[![Snapcraft](https://img.shields.io/badge/snap-available-82BEA0.svg?logo=snapcraft)](https://snapcraft.io/email-cli)
+[![Snapcraft](https://img.shields.io/badge/snap-available-82BEA0.svg?logo=snapcraft)](https://snapcraft.io/matcha)
 
 [![Patreon](https://img.shields.io/badge/Patreon-F96854?logo=patreon&logoColor=white)](https://patreon.com/andrinoff)
 [![GitHub contributors](https://img.shields.io/github/contributors/floatpane/matcha)](https://github.com/floatpane/matcha/graphs/contributors)
@@ -46,7 +46,7 @@ A beautiful and functional email client for your terminal, built with Go and the
 
 ## Installation 🚀
 
-There are several ways to install Email CLI.
+There are several ways to install Matcha.
 
 ### Package Managers
 
@@ -54,13 +54,13 @@ There are several ways to install Email CLI.
 
 ```bash
 brew tap floatpane/matcha
-brew install email-cli
+brew install matcha
 ```
 
 After installation, run:
 
 ```bash
-email-cli
+matcha
 ```
 
 to get started.
@@ -68,12 +68,12 @@ to get started.
 ### Install using Snap
 
 ```bash
-sudo snap install email-cli
+sudo snap install matcha
 ```
 
 ### Build from Source 🔨
 
-Email CLI is written in **Go**. To build it manually:
+Matcha is written in **Go**. To build it manually:
 
 1.  Ensure you have Go installed (`go version`).
 2.  Clone the repository:
@@ -85,18 +85,18 @@ Email CLI is written in **Go**. To build it manually:
 3.  Navigate to the project folder:
 
     ```bash
-    cd email-cli
+    cd matcha
     ```
 
 4.  Build the binary:
 
     ```bash
-    go build -o email-cli
+    go build -o matcha
     ```
 
 5.  Run it:
     ```bash
-    ./email-cli
+    ./matcha
     ```
 
 ## License 📄

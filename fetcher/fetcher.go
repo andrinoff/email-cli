@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andrinoff/email-cli/config"
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message/mail"
+	"github.com/floatpane/matcha/config"
 	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/transform"
 )
