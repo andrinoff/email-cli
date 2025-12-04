@@ -6,7 +6,7 @@ First off, thank you for considering contributing to Email CLI! It's people like
 
 ### Reporting Bugs
 
-If you find a bug, please open an issue on our [GitHub issues page](https://github.com/andrinoff/email-cli/issues). Please include as much detail as possible, including:
+If you find a bug, please open an issue on our [GitHub issues page](https://github.com/floatpane/matcha/issues). Please include as much detail as possible, including:
 
 - A clear and descriptive title.
 - Steps to reproduce the bug.
@@ -16,7 +16,7 @@ If you find a bug, please open an issue on our [GitHub issues page](https://gith
 
 ### Suggesting Enhancements
 
-If you have an idea for a new feature or an improvement to an existing one, please open an issue on our [GitHub issues page](https://github.com/andrinoff/email-cli/issues). Please provide a clear description of the enhancement and why you think it would be a good addition.
+If you have an idea for a new feature or an improvement to an existing one, please open an issue on our [GitHub issues page](https://github.com/floatpane/matcha/issues). Please provide a clear description of the enhancement and why you think it would be a good addition.
 
 ### Pull Requests
 
@@ -37,7 +37,7 @@ To get started with development, you'll need to have Go installed.
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/andrinoff/email-cli.git
+    git clone https://github.com/floatpane/matcha.git
     cd email-cli
     ```
 2.  Install dependencies:

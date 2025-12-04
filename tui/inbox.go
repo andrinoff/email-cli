@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/andrinoff/email-cli/fetcher"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/floatpane/matcha/fetcher"
 )
 
 var (

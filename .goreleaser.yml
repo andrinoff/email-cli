@@ -13,7 +13,7 @@ before:
 builds:
   - # The main build configuration for your CLI.
     # The binary name will be 'email-cli'.
-    id: "email-cli"
+    id: "matcha"
     # The main entrypoint of your application.
     main: .
     # The Go compiler to use.
@@ -73,11 +73,11 @@ release:
 brews:
   - # The configuration for your Homebrew tap.
     # The name of your formula file will be 'email-cli.rb'.
-    name: email-cli
+    name: matcha
     # The GitHub repository for your Homebrew tap.
     tap:
-      owner: andrinoff
-      name: homebrew-email-cli
+      owner: floatpane
+      name: homebrew-matcha
       # The token to use for pushing to the tap repository.
       # It uses the secret you'll create in your repository settings.
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
@@ -90,7 +90,7 @@ brews:
     # A description for your formula.
     description: "A beautiful and functional email client for your terminal."
     # The homepage URL for your formula.
-    homepage: "https://github.com/andrinoff/email-cli"
+    homepage: "https://matcha.floatpane.com"
 
     # The dependencies for your formula.
     # Since it's a pre-compiled binary, there are no runtime dependencies.
@@ -104,12 +104,12 @@ brews:
     # The installation instructions for your formula.
     # This tells Homebrew to just install the binary.
     install: |
-      bin.install "email-cli"
+      bin.install "matcha"
 
 # 'snapcrafts' configures the Snapcraft integration.
 snapcrafts:
   - # The configuration for your Snapcraft package.
-    name: email-cli
+    name: matcha
     publish: true
     summary: "A beautiful and functional email client for your terminal."
     description: |

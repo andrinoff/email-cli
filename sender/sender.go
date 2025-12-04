@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/andrinoff/email-cli/config"
+	"github.com/floatpane/matcha/config"
 )
 
 // generateMessageID creates a unique Message-ID header.

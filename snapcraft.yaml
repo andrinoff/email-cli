@@ -20,4 +20,4 @@ parts:
   email-cli:
     plugin: go
     source: .
-    go-importpath: github.com/andrinoff/email-cli
+    go-importpath: github.com/floatpane/matcha

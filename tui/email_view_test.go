@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andrinoff/email-cli/fetcher"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/floatpane/matcha/fetcher"
 )
 
 func TestEmailViewUpdate(t *testing.T) {

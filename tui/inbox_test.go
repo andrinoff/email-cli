@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andrinoff/email-cli/fetcher"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/floatpane/matcha/fetcher"
 )
 
 // TestInboxUpdate verifies the state transitions in the inbox view.

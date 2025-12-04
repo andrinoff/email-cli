@@ -1,4 +1,4 @@
-module github.com/andrinoff/email-cli
+module github.com/floatpane/matcha
 
 go 1.24.5
 

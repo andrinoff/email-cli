@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/andrinoff/email-cli/fetcher"
+import "github.com/floatpane/matcha/fetcher"
 
 type ViewEmailMsg struct {
 	Index int
