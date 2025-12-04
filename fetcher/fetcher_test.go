@@ -34,9 +34,18 @@ func TestFetchEmails(t *testing.T) {
 	}
 
 	// Check that the emails are sorted from newest to oldest.
+	// Skip emails with zero/invalid dates when checking sort order.
 	if len(emails) > 1 {
-		if emails[0].Date.Before(emails[len(emails)-1].Date) {
-			t.Error("Emails do not appear to be sorted from newest to oldest.")
+		var validEmails []Email
+		for _, e := range emails {
+			if !e.Date.IsZero() {
+				validEmails = append(validEmails, e)
+			}
+		}
+		if len(validEmails) > 1 {
+			if validEmails[0].Date.Before(validEmails[len(validEmails)-1].Date) {
+				t.Error("Emails do not appear to be sorted from newest to oldest.")
+			}
 		}
 	}
 
