@@ -44,8 +44,12 @@ jobs:
 
       - name: Clean Snapcraft cache
         run: |
-          sudo rm -rf /home/runner/.cache/snapcraft
+          sudo rm -rf /home/runner/.cache/snapcraft || true
           sudo rm -rf /root/.cache/snapcraft || true
+          sudo rm -rf ~/.cache/snapcraft || true
+          mkdir -p /home/runner/.cache/snapcraft/download
+          mkdir -p /home/runner/.cache/snapcraft/stage-packages
+          chmod -R 755 /home/runner/.cache/snapcraft
 
       - name: Run GoReleaser
         if: steps.tag_version.outputs.new_tag
