@@ -1,54 +1,491 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Email CLI - Your Terminal Email Client</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <header>
-      <nav>
-        <div class="logo">Email CLI 📧</div>
-        <ul>
-          <li><a href="/">Home</a></li>
-          <li><a href="/features">Features</a></li>
-          <li><a href="/contact">Contact</a></li>
-        </ul>
-      </nav>
-    </header>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Email CLI - Your Terminal Email Client</title>
+        <link rel="stylesheet" href="style.css" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+    </head>
+    <body>
+        <div class="gradient-bg"></div>
 
-    <main>
-      <section class="hero">
-        <div class="hero-text">
-          <h1>A beautiful and functional email client for your terminal.</h1>
-          <p>
-            Never leave your command line to check your inbox or send an email
-            again!
-          </p>
-        </div>
-        <div class="hero-image">
-          <img src="assets/preview.png" alt="Email CLI Preview" />
-        </div>
-        <a href="/get-started" class="button">Get Started</a>
-      </section>
-    </main>
+        <header>
+            <nav>
+                <a href="/" class="logo">
+                    <span class="logo-icon">📧</span>
+                    <span class="logo-text">Email CLI</span>
+                </a>
+                <div class="nav-links">
+                    <a href="#features">Features</a>
+                    <a href="#installation">Install</a>
+                    <a href="#usage">Usage</a>
+                    <a
+                        href="https://github.com/andrinoff/email-cli"
+                        target="_blank"
+                        class="github-link"
+                    >
+                        <svg
+                            height="20"
+                            width="20"
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                        >
+                            <path
+                                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+                            />
+                        </svg>
+                        GitHub
+                    </a>
+                </div>
+            </nav>
+        </header>
 
-    <footer>
-      <p>Copyright 2025-present Drew Smirnoff</p>
-      <p>
-        Distributed under the MIT License. See the
-        <a href="https://github.com/andrinoff/email-cli/blob/master/LICENSE"
-          >LICENSE</a
-        >
-        file for more information.
-      </p>
-      <p>
-        <a
-          href="https://github.com/andrinoff/email-cli/blob/master/CODE_OF_CONDUCT.md"
-          >Code of Conduct</a
-        >
-      </p>
-    </footer>
-  </body>
+        <main>
+            <!-- Hero Section -->
+            <section class="hero">
+                <div class="hero-badges">
+                    <span class="badge">MIT License</span>
+                    <span class="badge">macOS & Linux</span>
+                    <span class="badge">Written in Go</span>
+                </div>
+
+                <h1 class="hero-title">
+                    The Ultimate<br />
+                    <span class="gradient-text">Terminal Email Client.</span>
+                </h1>
+
+                <p class="hero-subtitle">
+                    Never leave your command line to check your inbox or send an
+                    email again. A beautiful TUI for power users who live in the
+                    terminal.
+                </p>
+
+                <div class="hero-cta">
+                    <a href="#installation" class="btn btn-primary">
+                        <span class="btn-icon">⬇</span>
+                        Download Now
+                    </a>
+                    <a
+                        href="https://github.com/andrinoff/email-cli"
+                        target="_blank"
+                        class="btn btn-secondary"
+                    >
+                        View on GitHub
+                    </a>
+                </div>
+            </section>
+
+            <!-- Terminal Preview Section -->
+            <section class="preview" id="preview">
+                <h2 class="section-title">Live Preview</h2>
+
+                <div class="terminal-window">
+                    <div class="terminal-header">
+                        <div class="terminal-buttons">
+                            <span class="terminal-btn red"></span>
+                            <span class="terminal-btn yellow"></span>
+                            <span class="terminal-btn green"></span>
+                        </div>
+                        <span class="terminal-title">email-cli — zsh</span>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="tui-badge">Email CLI</div>
+                        <div class="tui-prompt">What would you like to do?</div>
+                        <div class="tui-menu">
+                            <div class="tui-menu-item active">
+                                <span class="tui-cursor">&gt;</span>
+                                <span class="tui-option selected"
+                                    >View Inbox</span
+                                >
+                            </div>
+                            <div class="tui-menu-item">
+                                <span class="tui-cursor-space"></span>
+                                <span class="tui-option">Compose Email</span>
+                            </div>
+                            <div class="tui-menu-item">
+                                <span class="tui-cursor-space"></span>
+                                <span class="tui-option">Settings</span>
+                            </div>
+                        </div>
+                        <div class="tui-hint">
+                            Use <span class="tui-key">↑/↓</span> to navigate,
+                            enter to select, and
+                            <span class="tui-key">ctrl+c</span> to quit.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="preview-image-container">
+                    <img
+                        src="assets/preview.png"
+                        alt="Email CLI Preview"
+                        class="preview-image"
+                    />
+                </div>
+            </section>
+
+            <!-- Features Section -->
+            <section class="features" id="features">
+                <h2 class="section-title">Features</h2>
+
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">📬</div>
+                        <h3>View Your Inbox</h3>
+                        <p>
+                            Fetches and displays a list of your most recent
+                            emails with beautiful formatting and quick
+                            navigation.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">📖</div>
+                        <h3>Read Emails</h3>
+                        <p>
+                            Select an email from your inbox to view its full
+                            content with proper text rendering and attachments.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">✍️</div>
+                        <h3>Compose & Send</h3>
+                        <p>
+                            A simple and intuitive interface for writing and
+                            sending new emails without leaving your terminal.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🎨</div>
+                        <h3>Beautiful TUI</h3>
+                        <p>
+                            A clean and modern terminal user interface built
+                            with Bubble Tea that's a pleasure to use.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">🔐</div>
+                        <h3>Secure</h3>
+                        <p>
+                            Uses a local configuration file to store your
+                            credentials securely. Your data never leaves your
+                            machine.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">⌨️</div>
+                        <h3>Keyboard Driven</h3>
+                        <p>
+                            Navigate, select, and manage your emails entirely
+                            with keyboard shortcuts. No mouse required.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Installation Section -->
+            <section class="installation" id="installation">
+                <h2 class="section-title">Installation</h2>
+
+                <div class="install-methods">
+                    <div class="install-method">
+                        <div class="install-header">
+                            <span class="install-badge recommended"
+                                >Recommended</span
+                            >
+                            <h3>Install with Homebrew</h3>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span>Terminal</span>
+                                <button
+                                    class="copy-btn"
+                                    onclick="copyCode(this)"
+                                >
+                                    Copy All
+                                </button>
+                            </div>
+                            <div class="code-body">
+                                <div class="code-line">
+                                    <span class="prompt">~</span>
+                                    <span class="command">$</span>
+                                    <span class="code-text"
+                                        >brew tap andrinoff/email-cli</span
+                                    >
+                                </div>
+                                <div class="code-line">
+                                    <span class="prompt">~</span>
+                                    <span class="command">$</span>
+                                    <span class="code-text"
+                                        >brew install email-cli</span
+                                    >
+                                </div>
+                                <div class="code-line">
+                                    <span class="prompt">~</span>
+                                    <span class="command">$</span>
+                                    <span class="code-text">email-cli</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="install-method">
+                        <h3>Or, Build from Source</h3>
+
+                        <div class="install-steps">
+                            <div class="install-step">
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h4>Clone the Repository</h4>
+                                    <p>
+                                        Grab the source code from GitHub. Make
+                                        sure you have Go installed.
+                                    </p>
+                                    <div class="code-block small">
+                                        <div class="code-body">
+                                            <div class="code-line">
+                                                <span class="code-text"
+                                                    >git clone
+                                                    https://github.com/andrinoff/email-cli.git</span
+                                                >
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="install-step">
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h4>Build the Binary</h4>
+                                    <p>
+                                        Navigate to the project folder and
+                                        compile.
+                                    </p>
+                                    <div class="code-block small">
+                                        <div class="code-body">
+                                            <div class="code-line">
+                                                <span class="code-text"
+                                                    >cd email-cli && go build -o
+                                                    email-cli</span
+                                                >
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="install-step">
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h4>Run It</h4>
+                                    <p>
+                                        Execute the binary or move it to your
+                                        PATH for global access.
+                                    </p>
+                                    <div class="code-block small">
+                                        <div class="code-body">
+                                            <div class="code-line">
+                                                <span class="code-text"
+                                                    >./email-cli</span
+                                                >
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Usage Section -->
+            <section class="usage" id="usage">
+                <h2 class="section-title">Usage</h2>
+
+                <div class="usage-grid">
+                    <div class="usage-card">
+                        <div class="usage-keys">
+                            <kbd>↑</kbd><kbd>↓</kbd>
+                            <span class="or">or</span>
+                            <kbd>k</kbd><kbd>j</kbd>
+                        </div>
+                        <h4>Navigate</h4>
+                        <p>Move through menus and email lists</p>
+                    </div>
+
+                    <div class="usage-card">
+                        <div class="usage-keys">
+                            <kbd>Enter</kbd>
+                        </div>
+                        <h4>Select</h4>
+                        <p>Open emails or confirm actions</p>
+                    </div>
+
+                    <div class="usage-card">
+                        <div class="usage-keys">
+                            <kbd>c</kbd>
+                        </div>
+                        <h4>Compose</h4>
+                        <p>Start writing a new email</p>
+                    </div>
+
+                    <div class="usage-card">
+                        <div class="usage-keys">
+                            <kbd>Tab</kbd>
+                        </div>
+                        <h4>Switch Fields</h4>
+                        <p>Move between To, Subject, and Body</p>
+                    </div>
+
+                    <div class="usage-card">
+                        <div class="usage-keys">
+                            <kbd>Esc</kbd>
+                        </div>
+                        <h4>Go Back</h4>
+                        <p>Return to the previous view</p>
+                    </div>
+
+                    <div class="usage-card">
+                        <div class="usage-keys">
+                            <kbd>Ctrl</kbd><span class="plus">+</span
+                            ><kbd>C</kbd>
+                        </div>
+                        <h4>Quit</h4>
+                        <p>Exit the application</p>
+                    </div>
+                </div>
+
+                <div class="providers">
+                    <h3>Supported Providers</h3>
+                    <div class="provider-list">
+                        <div class="provider">
+                            <span class="provider-icon">📧</span>
+                            <span>Gmail</span>
+                        </div>
+                        <div class="provider">
+                            <span class="provider-icon">☁️</span>
+                            <span>iCloud</span>
+                        </div>
+                        <div class="provider coming-soon">
+                            <span class="provider-icon">📬</span>
+                            <span>More coming soon...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Contact Section -->
+            <section class="contact" id="contact">
+                <div class="contact-content">
+                    <h2>Get in Touch</h2>
+                    <p>
+                        Made with ❤️ by
+                        <a href="https://andrinoff.com" target="_blank"
+                            >@andrinoff</a
+                        >
+                    </p>
+                    <p>
+                        For support, please open an issue on the
+                        <a
+                            href="https://github.com/andrinoff/email-cli/issues"
+                            target="_blank"
+                            >GitHub repository</a
+                        >.
+                    </p>
+
+                    <div class="support-links">
+                        <a
+                            href="https://patreon.com/andrinoff"
+                            target="_blank"
+                            class="support-link"
+                        >
+                            <span>❤️</span> Support on Patreon
+                        </a>
+                        <a
+                            href="https://ko-fi.com/andrinoff"
+                            target="_blank"
+                            class="support-link"
+                        >
+                            <span>☕</span> Buy me a coffee
+                        </a>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <span class="logo-icon">📧</span>
+                    <span>Email CLI</span>
+                </div>
+                <div class="footer-links">
+                    <a
+                        href="https://github.com/andrinoff/email-cli/blob/main/LICENSE"
+                        target="_blank"
+                        >MIT License</a
+                    >
+                    <a
+                        href="https://github.com/andrinoff/email-cli/blob/main/CODE_OF_CONDUCT.md"
+                        target="_blank"
+                        >Code of Conduct</a
+                    >
+                    <a
+                        href="https://github.com/andrinoff/email-cli"
+                        target="_blank"
+                        >GitHub</a
+                    >
+                </div>
+                <p class="copyright">© 2025 Drew Smirnoff. MIT Licensed.</p>
+            </div>
+        </footer>
+
+        <script>
+            function copyCode(btn) {
+                const codeBlock = btn.closest(".code-block");
+                const codeLines = codeBlock.querySelectorAll(".code-text");
+                const text = Array.from(codeLines)
+                    .map((line) => line.textContent)
+                    .join("\n");
+
+                navigator.clipboard.writeText(text).then(() => {
+                    const originalText = btn.textContent;
+                    btn.textContent = "Copied!";
+                    btn.classList.add("copied");
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.classList.remove("copied");
+                    }, 2000);
+                });
+            }
+
+            // Smooth scroll for anchor links
+            document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+                anchor.addEventListener("click", function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(
+                        this.getAttribute("href"),
+                    );
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                        });
+                    }
+                });
+            });
+        </script>
+    </body>
 </html>
