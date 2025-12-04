@@ -540,6 +540,8 @@ main {
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border-radius: 50px;
+    position: relative;
+    top: -13px;
 }
 
 .install-badge.recommended {
