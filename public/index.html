@@ -102,7 +102,12 @@
                         <span class="terminal-title">matcha — zsh</span>
                     </div>
                     <div class="terminal-body">
-                        <div class="tui-badge">Matcha</div>
+                        <pre class="tui-ascii-logo">
+              __      __
+  __ _  ___ _/ /_____/ /  ___ _
+ /  ' \/ _ `/ __/ __/ _ \/ _ `/
+/_/_/_/\_,_/\__/\__/_//_/\_,_/</pre
+                        >
                         <div class="tui-prompt">What would you like to do?</div>
                         <div class="tui-menu">
                             <div class="tui-menu-item active">
@@ -114,6 +119,10 @@
                             <div class="tui-menu-item">
                                 <span class="tui-cursor-space"></span>
                                 <span class="tui-option">Compose Email</span>
+                            </div>
+                            <div class="tui-menu-item">
+                                <span class="tui-cursor-space"></span>
+                                <span class="tui-option">Drafts</span>
                             </div>
                             <div class="tui-menu-item">
                                 <span class="tui-cursor-space"></span>
@@ -195,6 +204,35 @@
                         <p>
                             Navigate, select, and manage your emails entirely
                             with keyboard shortcuts. No mouse required.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">👥</div>
+                        <h3>Multiple Accounts</h3>
+                        <p>
+                            Manage multiple email accounts in one place. Switch
+                            between accounts seamlessly without leaving your
+                            terminal.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">📇</div>
+                        <h3>Contacts</h3>
+                        <p>
+                            Save and manage your contacts locally. Quickly
+                            compose emails to your saved contacts with
+                            auto-complete support.
+                        </p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Email Caching</h3>
+                        <p>
+                            Emails are cached locally for faster access. Enjoy
+                            instant load times.
                         </p>
                     </div>
                 </div>
@@ -379,16 +417,65 @@
                     <h3>Supported Providers</h3>
                     <div class="provider-list">
                         <div class="provider">
-                            <span class="provider-icon">📧</span>
+                            <span class="provider-icon">
+                                <svg
+                                    width="20"
+                                    height="20"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path
+                                        d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
+                                    ></path>
+                                    <polyline
+                                        points="22,6 12,13 2,6"
+                                    ></polyline>
+                                </svg>
+                            </span>
                             <span>Gmail</span>
                         </div>
                         <div class="provider">
-                            <span class="provider-icon">☁️</span>
+                            <span class="provider-icon">
+                                <svg
+                                    width="20"
+                                    height="20"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path
+                                        d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"
+                                    ></path>
+                                </svg>
+                            </span>
                             <span>iCloud</span>
                         </div>
-                        <div class="provider coming-soon">
-                            <span class="provider-icon">📬</span>
-                            <span>More coming soon...</span>
+                        <div class="provider">
+                            <span class="provider-icon">
+                                <svg
+                                    width="20"
+                                    height="20"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <path
+                                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                                    ></path>
+                                </svg>
+                            </span>
+                            <span>Custom</span>
                         </div>
                     </div>
                 </div>
