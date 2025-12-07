@@ -221,22 +221,65 @@ func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error
 
 	var textPartID string
 	var attachments []Attachment
+	var checkPart func(part *imap.BodyStructure, partID string)
+	checkPart = func(part *imap.BodyStructure, partID string) {
+		// Check for text content
+		if part.MIMEType == "text" && (part.MIMESubType == "plain" || part.MIMESubType == "html") && textPartID == "" {
+			textPartID = partID
+		}
+
+		// Check for attachments using multiple methods
+		filename := ""
+		// First try the Filename() method which handles various cases
+		if fn, err := part.Filename(); err == nil && fn != "" {
+			filename = fn
+		}
+		// Fallback: check DispositionParams
+		if filename == "" {
+			if fn, ok := part.DispositionParams["filename"]; ok && fn != "" {
+				filename = fn
+			}
+		}
+		// Fallback: check Params (for name parameter)
+		if filename == "" {
+			if fn, ok := part.Params["name"]; ok && fn != "" {
+				filename = fn
+			}
+		}
+		// Fallback: check Params for filename
+		if filename == "" {
+			if fn, ok := part.Params["filename"]; ok && fn != "" {
+				filename = fn
+			}
+		}
+
+		// Add as attachment if it has a disposition or a filename (and not just plain text)
+		if filename != "" && (part.Disposition == "attachment" || part.Disposition == "inline" || part.MIMEType != "text") {
+			attachments = append(attachments, Attachment{Filename: filename, PartID: partID})
+		}
+	}
+
 	var findParts func(*imap.BodyStructure, string)
 	findParts = func(bs *imap.BodyStructure, prefix string) {
+		// If this is a non-multipart message, check the body structure itself
+		if len(bs.Parts) == 0 {
+			partID := prefix
+			if partID == "" {
+				partID = "1"
+			}
+			checkPart(bs, partID)
+			return
+		}
+
+		// Iterate through parts
 		for i, part := range bs.Parts {
 			partID := fmt.Sprintf("%d", i+1)
 			if prefix != "" {
 				partID = fmt.Sprintf("%s.%d", prefix, i+1)
 			}
 
-			if part.MIMEType == "text" && (part.MIMESubType == "plain" || part.MIMESubType == "html") && textPartID == "" {
-				textPartID = partID
-			}
-			if part.Disposition == "attachment" || part.Disposition == "inline" {
-				if filename, ok := part.Params["filename"]; ok {
-					attachments = append(attachments, Attachment{Filename: filename, PartID: partID})
-				}
-			}
+			checkPart(part, partID)
+
 			if len(part.Parts) > 0 {
 				findParts(part, partID)
 			}

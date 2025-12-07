@@ -1,10 +1,16 @@
-# Matcha 🍵
-
 <div align="center">
 
 ---
 
 <img src = "assets/logo.png" width=200 height=200>
+    
+```
+                    __       __
+    ____ ___  ____ _/ /______/ /_  ____ _
+    / __ '__ \/ __ '/ __/ ___/ __ \/ __ '/
+    / / / / / / /_/ / /_/ /__/ / / / /_/ /
+/_/ /_/ /_/\__,_/\__/\___/_/ /_/\__,_/
+```
 
 ---
 
@@ -31,7 +37,6 @@
 
 A beautiful and functional email client for your terminal, built with Go and the charming Bubble Tea TUI library. Never leave your command line to check your inbox or send an email again!
 
-![Main Menu Screenshot](assets/preview.png)
 
 </div>
 

@@ -8,10 +8,19 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// ASCII logo for Matcha displayed during loading screens
+const asciiLogo = `
+                 __       __
+   ____ ___  ____ _/ /______/ /_  ____ _
+  / __ '__ \/ __ '/ __/ ___/ __ \/ __ '/
+ / / / / / / /_/ / /_/ /__/ / / / /_/ /
+/_/ /_/ /_/\__,_/\__/\___/_/ /_/\__,_/
+`
+
 var (
 	DialogBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#874BFD")).
+			BorderForeground(lipgloss.Color("#25A065")).
 			Padding(1, 0).
 			BorderTop(true).
 			BorderLeft(true).
@@ -20,15 +29,15 @@ var (
 
 	HelpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	SuccessStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
-	InfoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+	InfoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
 
 	H1Style = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("205")).
+		Foreground(lipgloss.Color("42")).
 		Bold(true).
 		Align(lipgloss.Center)
 
 	H2Style = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("205")).
+		Foreground(lipgloss.Color("42")).
 		Bold(false). // Less bold
 		Align(lipgloss.Center)
 
@@ -47,7 +56,7 @@ type Status struct {
 func NewStatus(msg string) Status {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	return Status{spinner: s, message: msg}
 }
 
@@ -60,5 +69,10 @@ func (m Status) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Status) View() string {
-	return fmt.Sprintf("\n\n   %s %s\n\n", m.spinner.View(), m.message)
+	logoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	styledLogo := logoStyle.Render(asciiLogo)
+
+	spinnerLine := fmt.Sprintf("   %s %s", m.spinner.View(), m.message)
+
+	return fmt.Sprintf("%s\n%s\n\n", styledLogo, spinnerLine)
 }

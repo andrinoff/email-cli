@@ -13,8 +13,8 @@ import (
 
 var (
 	filePickerItemStyle         = lipgloss.NewStyle().PaddingLeft(2)
-	filePickerSelectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("205"))
-	directoryStyle              = lipgloss.NewStyle().Foreground(lipgloss.Color("99"))
+	filePickerSelectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("42"))
+	directoryStyle              = lipgloss.NewStyle().Foreground(lipgloss.Color("34"))
 )
 
 type FilePicker struct {

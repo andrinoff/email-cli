@@ -167,7 +167,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.emails[msg.Index].Body = msg.Body
 		m.emails[msg.Index].Attachments = msg.Attachments
 
-		emailView := tui.NewEmailView(m.emails[msg.Index], m.width, m.height)
+		emailView := tui.NewEmailView(m.emails[msg.Index], msg.Index, m.width, m.height)
 		m.current = emailView
 		return m, m.current.Init()
 

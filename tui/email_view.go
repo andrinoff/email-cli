@@ -19,11 +19,12 @@ var (
 type EmailView struct {
 	viewport           viewport.Model
 	email              fetcher.Email
+	emailIndex         int
 	attachmentCursor   int
 	focusOnAttachments bool
 }
 
-func NewEmailView(email fetcher.Email, width, height int) *EmailView {
+func NewEmailView(email fetcher.Email, emailIndex, width, height int) *EmailView {
 	// Pass the styles from the tui package to the view package
 	body, err := view.ProcessBody(email.Body, H1Style, H2Style, BodyStyle)
 	if err != nil {
@@ -42,8 +43,9 @@ func NewEmailView(email fetcher.Email, width, height int) *EmailView {
 	vp.SetContent(body)
 
 	return &EmailView{
-		viewport: vp,
-		email:    email,
+		viewport:   vp,
+		email:      email,
+		emailIndex: emailIndex,
 	}
 }
 
@@ -79,8 +81,14 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if len(m.email.Attachments) > 0 {
 					selected := m.email.Attachments[m.attachmentCursor]
+					idx := m.emailIndex
 					return m, func() tea.Msg {
-						return DownloadAttachmentMsg{Filename: selected.Filename, Data: selected.Data}
+						return DownloadAttachmentMsg{
+							Index:    idx,
+							Filename: selected.Filename,
+							PartID:   selected.PartID,
+							Data:     selected.Data,
+						}
 					}
 				}
 			case "tab":

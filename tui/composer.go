@@ -12,14 +12,14 @@ import (
 
 // Styles for the UI
 var (
-	focusedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	focusedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	blurredStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	cursorStyle         = focusedStyle.Copy()
 	noStyle             = lipgloss.NewStyle()
 	helpStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	focusedButton       = focusedStyle.Copy().Render("[ Send ]")
 	blurredButton       = blurredStyle.Copy().Render("[ Send ]")
-	emailRecipientStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+	emailRecipientStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
 	attachmentStyle     = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("240")) // This was the missing style
 )
 
