@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -893,9 +895,71 @@ func downloadAttachmentCmd(account *config.Account, uid uint32, msg tui.Download
 				return tui.AttachmentDownloadedMsg{Err: mkErr}
 			}
 		}
-		filePath := filepath.Join(downloadsPath, msg.Filename)
-		err = os.WriteFile(filePath, data, 0644)
-		return tui.AttachmentDownloadedMsg{Path: filePath, Err: err}
+
+		// Save the attachment using an exclusive create so we never overwrite an existing file.
+		// If the filename already exists, append \" (n)\" before the extension.
+		origName := msg.Filename
+		ext := filepath.Ext(origName)
+		base := strings.TrimSuffix(origName, ext)
+		candidate := origName
+		i := 1
+		var filePath string
+
+		for {
+			filePath = filepath.Join(downloadsPath, candidate)
+
+			// Try to create file exclusively. If it already exists, os.OpenFile will return an error
+			// that satisfies os.IsExist(err), so we can increment the candidate.
+			f, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+			if err != nil {
+				if os.IsExist(err) {
+					// file exists, try next candidate
+					candidate = fmt.Sprintf("%s (%d)%s", base, i, ext)
+					i++
+					continue
+				}
+				// Some other error while attempting to create file
+				log.Printf("error creating file %s: %v", filePath, err)
+				return tui.AttachmentDownloadedMsg{Err: err}
+			}
+
+			// Successfully created the file descriptor; write and close.
+			if _, writeErr := f.Write(data); writeErr != nil {
+				_ = f.Close()
+				log.Printf("error writing to file %s: %v", filePath, writeErr)
+				return tui.AttachmentDownloadedMsg{Err: writeErr}
+			}
+			if closeErr := f.Close(); closeErr != nil {
+				log.Printf("warning: error closing file %s: %v", filePath, closeErr)
+			}
+
+			// file saved successfully
+			break
+		}
+
+		log.Printf("attachment saved to %s", filePath)
+
+		// Try to open the file using a platform-specific opener asynchronously and log the outcome.
+		go func(p string) {
+			var cmd *exec.Cmd
+			switch runtime.GOOS {
+			case "darwin":
+				cmd = exec.Command("open", p)
+			case "linux":
+				cmd = exec.Command("xdg-open", p)
+			case "windows":
+				// 'start' is a cmd builtin; provide an empty title argument to avoid interpreting the path as the title.
+				cmd = exec.Command("cmd", "/c", "start", "", p)
+			default:
+				// Unsupported OS: nothing to do.
+				return
+			}
+			if err := cmd.Start(); err != nil {
+				log.Printf("failed to open file %s: %v", p, err)
+			}
+		}(filePath)
+
+		return tui.AttachmentDownloadedMsg{Path: filePath, Err: nil}
 	}
 }
 
