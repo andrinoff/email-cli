@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/floatpane/matcha/config"
 )
 
 // Styles defined locally to avoid import issues.
@@ -21,16 +22,23 @@ type Choice struct {
 	cursor         int
 	choices        []string
 	hasCachedDraft bool
+	hasSavedDrafts bool
 }
 
 func NewChoice(hasCachedDraft bool) Choice {
-	choices := []string{"View Inbox", "Compose Email", "Settings"}
+	hasSavedDrafts := config.HasDrafts()
+	choices := []string{"View Inbox", "Compose Email"}
+	if hasSavedDrafts {
+		choices = append(choices, "Drafts")
+	}
+	choices = append(choices, "Settings")
 	if hasCachedDraft {
 		choices = append(choices, "Restore Draft")
 	}
 	return Choice{
 		choices:        choices,
 		hasCachedDraft: hasCachedDraft,
+		hasSavedDrafts: hasSavedDrafts,
 	}
 }
 
@@ -57,6 +65,8 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg { return GoToInboxMsg{} }
 			case "Compose Email":
 				return m, func() tea.Msg { return GoToSendMsg{} }
+			case "Drafts":
+				return m, func() tea.Msg { return GoToDraftsMsg{} }
 			case "Settings":
 				return m, func() tea.Msg { return GoToSettingsMsg{} }
 			case "Restore Draft":

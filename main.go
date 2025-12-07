@@ -41,7 +41,7 @@ type mainModel struct {
 }
 
 func newInitialModel(cfg *config.Config) *mainModel {
-	hasCache := false
+	hasCache := config.HasEmailCache()
 	initialModel := &mainModel{
 		emailsByAcct: make(map[string][]fetcher.Email),
 	}
@@ -96,6 +96,15 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tui.DiscardDraftMsg:
 		m.cachedComposer = msg.ComposerState
+		// Save draft to disk
+		if msg.ComposerState != nil {
+			draft := msg.ComposerState.ToDraft()
+			go func() {
+				if err := config.SaveDraft(draft); err != nil {
+					log.Printf("Error saving draft: %v", err)
+				}
+			}()
+		}
 		m.current = tui.NewChoice(true)
 		return m, m.current.Init()
 
@@ -156,8 +165,81 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current = tui.NewLogin()
 			return m, m.current.Init()
 		}
+		// Try to load from cache first for instant display
+		if config.HasEmailCache() {
+			return m, loadCachedEmails()
+		}
+		// No cache, fetch normally
 		m.current = tui.NewStatus("Fetching emails from all accounts...")
 		return m, tea.Batch(m.current.Init(), fetchAllAccountsEmails(m.config))
+
+	case tui.CachedEmailsLoadedMsg:
+		if msg.Cache == nil {
+			// Cache load failed, fetch normally
+			m.current = tui.NewStatus("Fetching emails from all accounts...")
+			return m, tea.Batch(m.current.Init(), fetchAllAccountsEmails(m.config))
+		}
+
+		// Convert cached emails to fetcher.Email
+		var cachedEmails []fetcher.Email
+		emailsByAcct := make(map[string][]fetcher.Email)
+		for _, cached := range msg.Cache.Emails {
+			email := fetcher.Email{
+				UID:       cached.UID,
+				From:      cached.From,
+				To:        cached.To,
+				Subject:   cached.Subject,
+				Date:      cached.Date,
+				MessageID: cached.MessageID,
+				AccountID: cached.AccountID,
+			}
+			cachedEmails = append(cachedEmails, email)
+			emailsByAcct[cached.AccountID] = append(emailsByAcct[cached.AccountID], email)
+		}
+
+		m.emails = cachedEmails
+		m.emailsByAcct = emailsByAcct
+		m.inbox = tui.NewInbox(m.emails, m.config.Accounts)
+		m.current = m.inbox
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+
+		// Start background refresh
+		return m, tea.Batch(
+			m.current.Init(),
+			func() tea.Msg { return tui.RefreshingEmailsMsg{} },
+			refreshEmails(m.config),
+		)
+
+	case tui.EmailsRefreshedMsg:
+		m.emailsByAcct = msg.EmailsByAccount
+
+		// Flatten all emails
+		var allEmails []fetcher.Email
+		for _, emails := range msg.EmailsByAccount {
+			allEmails = append(allEmails, emails...)
+		}
+
+		// Sort by date (newest first)
+		for i := 0; i < len(allEmails); i++ {
+			for j := i + 1; j < len(allEmails); j++ {
+				if allEmails[j].Date.After(allEmails[i].Date) {
+					allEmails[i], allEmails[j] = allEmails[j], allEmails[i]
+				}
+			}
+		}
+
+		m.emails = allEmails
+
+		// Save to cache
+		go saveEmailsToCache(m.emails)
+
+		// Update inbox if it exists
+		if m.inbox != nil {
+			m.inbox.SetEmails(m.emails, m.config.Accounts)
+			// Forward the message to inbox to clear refreshing state
+			m.current, _ = m.current.Update(msg)
+		}
+		return m, nil
 
 	case tui.AllEmailsFetchedMsg:
 		m.emailsByAcct = msg.EmailsByAccount
@@ -178,6 +260,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.emails = allEmails
+
+		// Save to cache
+		go saveEmailsToCache(m.emails)
+
 		m.inbox = tui.NewInbox(m.emails, m.config.Accounts)
 		m.current = m.inbox
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
@@ -248,6 +334,33 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
+
+	case tui.GoToDraftsMsg:
+		drafts := config.GetAllDrafts()
+		m.current = tui.NewDrafts(drafts)
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
+
+	case tui.OpenDraftMsg:
+		m.cachedComposer = nil
+		var accounts []config.Account
+		if m.config != nil {
+			accounts = m.config.Accounts
+		}
+		composer := tui.NewComposerFromDraft(msg.Draft, accounts)
+		m.current = composer
+		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		return m, m.current.Init()
+
+	case tui.DeleteSavedDraftMsg:
+		go func() {
+			if err := config.DeleteDraft(msg.DraftID); err != nil {
+				log.Printf("Error deleting draft: %v", err)
+			}
+		}()
+		// Send message back to drafts view
+		m.current, cmd = m.current.Update(tui.DraftDeletedMsg{DraftID: msg.DraftID})
+		return m, cmd
 
 	case tui.GoToSettingsMsg:
 		if m.config != nil {
@@ -354,6 +467,11 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case tui.SendEmailMsg:
+		// Get draft ID before clearing composer (if it's a composer)
+		var draftID string
+		if composer, ok := m.current.(*tui.Composer); ok {
+			draftID = composer.GetDraftID()
+		}
 		m.cachedComposer = nil
 		m.current = tui.NewStatus("Sending email...")
 
@@ -365,6 +483,24 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if account == nil && m.config != nil {
 			account = m.config.GetFirstAccount()
 		}
+
+		// Save contact and delete draft in background
+		go func() {
+			// Save the recipient as a contact
+			if msg.To != "" {
+				// Parse "Name <email>" format
+				name, email := parseEmailAddress(msg.To)
+				if err := config.AddContact(name, email); err != nil {
+					log.Printf("Error saving contact: %v", err)
+				}
+			}
+			// Delete the draft since email is being sent
+			if draftID != "" {
+				if err := config.DeleteDraft(draftID); err != nil {
+					log.Printf("Error deleting draft after send: %v", err)
+				}
+			}
+		}()
 
 		return m, tea.Batch(m.current.Init(), sendEmail(account, msg))
 
@@ -564,6 +700,86 @@ func fetchEmails(account *config.Account, limit, offset uint32) tea.Cmd {
 		}
 		return tui.EmailsAppendedMsg{Emails: emails, AccountID: account.ID}
 	}
+}
+
+func loadCachedEmails() tea.Cmd {
+	return func() tea.Msg {
+		cache, err := config.LoadEmailCache()
+		if err != nil {
+			return tui.CachedEmailsLoadedMsg{Cache: nil}
+		}
+		return tui.CachedEmailsLoadedMsg{Cache: cache}
+	}
+}
+
+func refreshEmails(cfg *config.Config) tea.Cmd {
+	return func() tea.Msg {
+		emailsByAccount := make(map[string][]fetcher.Email)
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+
+		for _, account := range cfg.Accounts {
+			wg.Add(1)
+			go func(acc config.Account) {
+				defer wg.Done()
+				emails, err := fetcher.FetchEmails(&acc, initialEmailLimit, 0)
+				if err != nil {
+					log.Printf("Error fetching from %s: %v", acc.Email, err)
+					return
+				}
+				mu.Lock()
+				emailsByAccount[acc.ID] = emails
+				mu.Unlock()
+			}(account)
+		}
+
+		wg.Wait()
+		return tui.EmailsRefreshedMsg{EmailsByAccount: emailsByAccount}
+	}
+}
+
+func saveEmailsToCache(emails []fetcher.Email) {
+	var cachedEmails []config.CachedEmail
+	for _, email := range emails {
+		cachedEmails = append(cachedEmails, config.CachedEmail{
+			UID:       email.UID,
+			From:      email.From,
+			To:        email.To,
+			Subject:   email.Subject,
+			Date:      email.Date,
+			MessageID: email.MessageID,
+			AccountID: email.AccountID,
+		})
+
+		// Save sender as a contact
+		if email.From != "" {
+			name, emailAddr := parseEmailAddress(email.From)
+			if err := config.AddContact(name, emailAddr); err != nil {
+				log.Printf("Error saving contact from email: %v", err)
+			}
+		}
+	}
+	cache := &config.EmailCache{Emails: cachedEmails}
+	if err := config.SaveEmailCache(cache); err != nil {
+		log.Printf("Error saving email cache: %v", err)
+	}
+}
+
+// parseEmailAddress parses "Name <email>" or just "email" format
+func parseEmailAddress(addr string) (name, email string) {
+	addr = strings.TrimSpace(addr)
+	if idx := strings.Index(addr, "<"); idx != -1 {
+		name = strings.TrimSpace(addr[:idx])
+		endIdx := strings.Index(addr, ">")
+		if endIdx > idx {
+			email = strings.TrimSpace(addr[idx+1 : endIdx])
+		} else {
+			email = strings.TrimSpace(addr[idx+1:])
+		}
+	} else {
+		email = addr
+	}
+	return name, email
 }
 
 func fetchEmailBodyCmd(cfg *config.Config, email fetcher.Email, uid uint32, accountID string) tea.Cmd {

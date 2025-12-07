@@ -50,11 +50,12 @@ func TestComposerUpdate(t *testing.T) {
 			t.Errorf("After four Tabs, focusIndex should be %d (focusSend), got %d", focusSend, composer.focusIndex)
 		}
 
-		// Simulate one more Tab to wrap around to the 'From' field.
+		// Simulate one more Tab to wrap around.
+		// With single account, From field is skipped, so it wraps to focusTo.
 		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyTab})
 		composer = model.(*Composer)
-		if composer.focusIndex != focusFrom {
-			t.Errorf("After five Tabs, focusIndex should wrap to %d (focusFrom), got %d", focusFrom, composer.focusIndex)
+		if composer.focusIndex != focusTo {
+			t.Errorf("After five Tabs, focusIndex should wrap to %d (focusTo) since single account skips From, got %d", focusTo, composer.focusIndex)
 		}
 	})
 
@@ -152,6 +153,117 @@ func TestComposerUpdate(t *testing.T) {
 
 		if singleComposer.showAccountPicker {
 			t.Error("Account picker should not open with single account")
+		}
+	})
+
+	t.Run("Multi-account focus cycling includes From", func(t *testing.T) {
+		multiAccounts := []config.Account{
+			{ID: "account-1", Email: "test1@example.com"},
+			{ID: "account-2", Email: "test2@example.com"},
+		}
+		multiComposer := NewComposerWithAccounts(multiAccounts, "account-1", "", "", "")
+
+		// Initial focus is on 'To' field
+		if multiComposer.focusIndex != focusTo {
+			t.Errorf("Initial focusIndex should be %d (focusTo), got %d", focusTo, multiComposer.focusIndex)
+		}
+
+		// Tab through all fields: To -> Subject -> Body -> Attachment -> Send -> From (wrap)
+		model, _ := multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // To -> Subject
+		multiComposer = model.(*Composer)
+		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // Subject -> Body
+		multiComposer = model.(*Composer)
+		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // Body -> Attachment
+		multiComposer = model.(*Composer)
+		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // Attachment -> Send
+		multiComposer = model.(*Composer)
+		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // Send -> From (wrap)
+		multiComposer = model.(*Composer)
+
+		// With multiple accounts, From field should be included in tab order
+		if multiComposer.focusIndex != focusFrom {
+			t.Errorf("After five Tabs with multi-account, focusIndex should wrap to %d (focusFrom), got %d", focusFrom, multiComposer.focusIndex)
+		}
+
+		// One more Tab should go to To
+		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyTab}) // From -> To
+		multiComposer = model.(*Composer)
+		if multiComposer.focusIndex != focusTo {
+			t.Errorf("After Tab from From, focusIndex should be %d (focusTo), got %d", focusTo, multiComposer.focusIndex)
+		}
+	})
+
+	t.Run("Shift+Tab backwards navigation", func(t *testing.T) {
+		accounts := []config.Account{
+			{ID: "account-1", Email: "test@example.com"},
+		}
+		composer := NewComposerWithAccounts(accounts, "account-1", "", "", "")
+
+		// Start at focusTo, move forward a couple times
+		if composer.focusIndex != focusTo {
+			t.Errorf("Initial focusIndex should be %d (focusTo), got %d", focusTo, composer.focusIndex)
+		}
+
+		// Tab forward to Subject
+		model, _ := composer.Update(tea.KeyMsg{Type: tea.KeyTab})
+		composer = model.(*Composer)
+		if composer.focusIndex != focusSubject {
+			t.Errorf("After Tab, focusIndex should be %d (focusSubject), got %d", focusSubject, composer.focusIndex)
+		}
+
+		// Tab forward to Body
+		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyTab})
+		composer = model.(*Composer)
+		if composer.focusIndex != focusBody {
+			t.Errorf("After second Tab, focusIndex should be %d (focusBody), got %d", focusBody, composer.focusIndex)
+		}
+
+		// Shift+Tab back to Subject
+		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+		composer = model.(*Composer)
+		if composer.focusIndex != focusSubject {
+			t.Errorf("After Shift+Tab, focusIndex should be %d (focusSubject), got %d", focusSubject, composer.focusIndex)
+		}
+
+		// Shift+Tab back to To
+		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+		composer = model.(*Composer)
+		if composer.focusIndex != focusTo {
+			t.Errorf("After second Shift+Tab, focusIndex should be %d (focusTo), got %d", focusTo, composer.focusIndex)
+		}
+
+		// Shift+Tab should wrap to Send (skipping From since single account)
+		model, _ = composer.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+		composer = model.(*Composer)
+		if composer.focusIndex != focusSend {
+			t.Errorf("After Shift+Tab from To, focusIndex should wrap to %d (focusSend), got %d", focusSend, composer.focusIndex)
+		}
+	})
+
+	t.Run("Multi-account Shift+Tab includes From", func(t *testing.T) {
+		multiAccounts := []config.Account{
+			{ID: "account-1", Email: "test1@example.com"},
+			{ID: "account-2", Email: "test2@example.com"},
+		}
+		multiComposer := NewComposerWithAccounts(multiAccounts, "account-1", "", "", "")
+
+		// Start at focusTo
+		if multiComposer.focusIndex != focusTo {
+			t.Errorf("Initial focusIndex should be %d (focusTo), got %d", focusTo, multiComposer.focusIndex)
+		}
+
+		// Shift+Tab should go to From (since multi-account)
+		model, _ := multiComposer.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+		multiComposer = model.(*Composer)
+		if multiComposer.focusIndex != focusFrom {
+			t.Errorf("After Shift+Tab from To with multi-account, focusIndex should be %d (focusFrom), got %d", focusFrom, multiComposer.focusIndex)
+		}
+
+		// Shift+Tab again should wrap to Send
+		model, _ = multiComposer.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+		multiComposer = model.(*Composer)
+		if multiComposer.focusIndex != focusSend {
+			t.Errorf("After Shift+Tab from From, focusIndex should wrap to %d (focusSend), got %d", focusSend, multiComposer.focusIndex)
 		}
 	})
 }

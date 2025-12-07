@@ -83,6 +83,7 @@ type AccountTab struct {
 type Inbox struct {
 	list             list.Model
 	isFetching       bool
+	isRefreshing     bool
 	emailsCount      int
 	accounts         []config.Account
 	emailsByAccount  map[string][]fetcher.Email
@@ -207,18 +208,26 @@ func (m *Inbox) updateList() {
 }
 
 func (m *Inbox) getTitle() string {
+	var title string
 	if m.currentAccountID == "" {
-		return "Inbox - All Accounts"
-	}
-	for _, acc := range m.accounts {
-		if acc.ID == m.currentAccountID {
-			if acc.Name != "" {
-				return fmt.Sprintf("Inbox - %s", acc.Name)
+		title = "Inbox - All Accounts"
+	} else {
+		title = "Inbox"
+		for _, acc := range m.accounts {
+			if acc.ID == m.currentAccountID {
+				if acc.Name != "" {
+					title = fmt.Sprintf("Inbox - %s", acc.Name)
+				} else {
+					title = fmt.Sprintf("Inbox - %s", acc.Email)
+				}
+				break
 			}
-			return fmt.Sprintf("Inbox - %s", acc.Email)
 		}
 	}
-	return "Inbox"
+	if m.isRefreshing {
+		title += " (refreshing...)"
+	}
+	return title
 }
 
 func (m *Inbox) Init() tea.Cmd {
@@ -300,6 +309,43 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.allEmails = append(m.allEmails, email)
 		}
 		m.emailCountByAcct[msg.AccountID] = len(m.emailsByAccount[msg.AccountID])
+
+		m.updateList()
+		return m, nil
+
+	case RefreshingEmailsMsg:
+		m.isRefreshing = true
+		m.list.Title = m.getTitle()
+		return m, nil
+
+	case EmailsRefreshedMsg:
+		m.isRefreshing = false
+
+		// Replace emails with fresh data
+		m.emailsByAccount = msg.EmailsByAccount
+
+		// Flatten all emails
+		var allEmails []fetcher.Email
+		for _, emails := range msg.EmailsByAccount {
+			allEmails = append(allEmails, emails...)
+		}
+
+		// Sort by date (newest first)
+		for i := 0; i < len(allEmails); i++ {
+			for j := i + 1; j < len(allEmails); j++ {
+				if allEmails[j].Date.After(allEmails[i].Date) {
+					allEmails[i], allEmails[j] = allEmails[j], allEmails[i]
+				}
+			}
+		}
+
+		m.allEmails = allEmails
+
+		// Update email counts
+		m.emailCountByAcct = make(map[string]int)
+		for accID, accEmails := range m.emailsByAccount {
+			m.emailCountByAcct[accID] = len(accEmails)
+		}
 
 		m.updateList()
 		return m, nil

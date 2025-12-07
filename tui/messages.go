@@ -1,6 +1,9 @@
 package tui
 
-import "github.com/floatpane/matcha/fetcher"
+import (
+	"github.com/floatpane/matcha/config"
+	"github.com/floatpane/matcha/fetcher"
+)
 
 type ViewEmailMsg struct {
 	Index     int
@@ -179,3 +182,58 @@ type SwitchFromAccountMsg struct {
 
 // GoToAccountListMsg signals navigation to the account list in settings.
 type GoToAccountListMsg struct{}
+
+// --- Draft Messages (persisted) ---
+
+// SaveDraftMsg signals that the current draft should be saved to disk.
+type SaveDraftMsg struct {
+	Draft config.Draft
+}
+
+// DraftSavedMsg signals that a draft was saved successfully.
+type DraftSavedMsg struct {
+	DraftID string
+	Err     error
+}
+
+// LoadDraftsMsg signals a request to load all saved drafts.
+type LoadDraftsMsg struct{}
+
+// DraftsLoadedMsg signals that drafts were loaded from disk.
+type DraftsLoadedMsg struct {
+	Drafts []config.Draft
+}
+
+// OpenDraftMsg signals that a specific draft should be opened in the composer.
+type OpenDraftMsg struct {
+	Draft config.Draft
+}
+
+// DeleteDraftMsg signals that a draft should be deleted.
+type DeleteSavedDraftMsg struct {
+	DraftID string
+}
+
+// DraftDeletedMsg signals that a draft was deleted.
+type DraftDeletedMsg struct {
+	DraftID string
+	Err     error
+}
+
+// GoToDraftsMsg signals navigation to the drafts list.
+type GoToDraftsMsg struct{}
+
+// --- Cache Messages ---
+
+// CachedEmailsLoadedMsg signals that cached emails were loaded from disk.
+type CachedEmailsLoadedMsg struct {
+	Cache *config.EmailCache
+}
+
+// RefreshingEmailsMsg signals that a background refresh is in progress.
+type RefreshingEmailsMsg struct{}
+
+// EmailsRefreshedMsg signals that fresh emails have been fetched in the background.
+type EmailsRefreshedMsg struct {
+	EmailsByAccount map[string][]fetcher.Email
+}
