@@ -5,13 +5,13 @@
 Output demo.gif
 
 # Terminal settings
-Set FontSize 18
+Set FontSize 14
 Set FontFamily "SF Mono,Menlo,Monaco,Cascadia Code,Consolas,monospace"
-Set Width 1000
-Set Height 600
+Set Width 1400
+Set Height 800
 Set Theme "Catppuccin Mocha"
-Set Padding 24
-Set Framerate 24
+Set Padding 20
+Set Framerate 30
 Set PlaybackSpeed 0.7
 
 # Window chrome
