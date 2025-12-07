@@ -13,31 +13,36 @@ import (
 var (
 	docStyle          = lipgloss.NewStyle().Margin(1, 2)
 	titleStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFDF5")).Background(lipgloss.Color("#25A065")).Padding(0, 1)
+	logoStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	listHeader        = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).PaddingBottom(1)
 	itemStyle         = lipgloss.NewStyle().PaddingLeft(2)
 	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("42"))
 )
 
+// ASCII logo for the start screen
+const choiceLogo = `
+                 __       __
+   ____ ___  ____ _/ /______/ /_  ____ _
+  / __ '__ \/ __ '/ __/ ___/ __ \/ __ '/
+ / / / / / / /_/ / /_/ /__/ / / / /_/ /
+/_/ /_/ /_/\__,_/\__/\___/_/ /_/\__,_/
+`
+
 type Choice struct {
 	cursor         int
 	choices        []string
-	hasCachedDraft bool
 	hasSavedDrafts bool
 }
 
-func NewChoice(hasCachedDraft bool) Choice {
+func NewChoice() Choice {
 	hasSavedDrafts := config.HasDrafts()
 	choices := []string{"View Inbox", "Compose Email"}
 	if hasSavedDrafts {
 		choices = append(choices, "Drafts")
 	}
 	choices = append(choices, "Settings")
-	if hasCachedDraft {
-		choices = append(choices, "Restore Draft")
-	}
 	return Choice{
 		choices:        choices,
-		hasCachedDraft: hasCachedDraft,
 		hasSavedDrafts: hasSavedDrafts,
 	}
 }
@@ -69,8 +74,6 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg { return GoToDraftsMsg{} }
 			case "Settings":
 				return m, func() tea.Msg { return GoToSettingsMsg{} }
-			case "Restore Draft":
-				return m, func() tea.Msg { return RestoreDraftMsg{} }
 			}
 		}
 	}
@@ -80,7 +83,8 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Choice) View() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("Matcha") + "\n\n")
+	b.WriteString(logoStyle.Render(choiceLogo))
+	b.WriteString("\n")
 	b.WriteString(listHeader.Render("What would you like to do?"))
 	b.WriteString("\n\n")
 

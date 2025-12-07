@@ -28,20 +28,18 @@ const (
 )
 
 type mainModel struct {
-	current        tea.Model
-	previousModel  tea.Model
-	cachedComposer *tui.Composer
-	config         *config.Config
-	emails         []fetcher.Email
-	emailsByAcct   map[string][]fetcher.Email
-	inbox          *tui.Inbox
-	width          int
-	height         int
-	err            error
+	current       tea.Model
+	previousModel tea.Model
+	config        *config.Config
+	emails        []fetcher.Email
+	emailsByAcct  map[string][]fetcher.Email
+	inbox         *tui.Inbox
+	width         int
+	height        int
+	err           error
 }
 
 func newInitialModel(cfg *config.Config) *mainModel {
-	hasCache := config.HasEmailCache()
 	initialModel := &mainModel{
 		emailsByAcct: make(map[string][]fetcher.Email),
 	}
@@ -49,7 +47,7 @@ func newInitialModel(cfg *config.Config) *mainModel {
 	if cfg == nil || !cfg.HasAccounts() {
 		initialModel.current = tui.NewLogin()
 	} else {
-		initialModel.current = tui.NewChoice(hasCache)
+		initialModel.current = tui.NewChoice()
 		initialModel.config = cfg
 	}
 	return initialModel
@@ -81,7 +79,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case *tui.FilePicker:
 				return m, func() tea.Msg { return tui.CancelFilePickerMsg{} }
 			case *tui.Inbox, *tui.Login:
-				m.current = tui.NewChoice(m.cachedComposer != nil)
+				m.current = tui.NewChoice()
 				return m, m.current.Init()
 			}
 		}
@@ -90,12 +88,11 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.inbox != nil {
 			m.current = m.inbox
 		} else {
-			m.current = tui.NewChoice(m.cachedComposer != nil)
+			m.current = tui.NewChoice()
 		}
 		return m, nil
 
 	case tui.DiscardDraftMsg:
-		m.cachedComposer = msg.ComposerState
 		// Save draft to disk
 		if msg.ComposerState != nil {
 			draft := msg.ComposerState.ToDraft()
@@ -105,16 +102,8 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}()
 		}
-		m.current = tui.NewChoice(true)
+		m.current = tui.NewChoice()
 		return m, m.current.Init()
-
-	case tui.RestoreDraftMsg:
-		if m.cachedComposer != nil {
-			m.current = m.cachedComposer
-			m.cachedComposer.ResetConfirmation()
-			m.cachedComposer = nil
-			return m, m.current.Init()
-		}
 
 	case tui.Credentials:
 		// Add new account or update existing
@@ -157,7 +146,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		m.current = tui.NewChoice(m.cachedComposer != nil)
+		m.current = tui.NewChoice()
 		return m, m.current.Init()
 
 	case tui.GoToInboxMsg:
@@ -324,7 +313,6 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tui.GoToSendMsg:
-		m.cachedComposer = nil
 		if m.config != nil && len(m.config.Accounts) > 0 {
 			firstAccount := m.config.GetFirstAccount()
 			composer := tui.NewComposerWithAccounts(m.config.Accounts, firstAccount.ID, msg.To, msg.Subject, msg.Body)
@@ -342,7 +330,6 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.current.Init()
 
 	case tui.OpenDraftMsg:
-		m.cachedComposer = nil
 		var accounts []config.Account
 		if m.config != nil {
 			accounts = m.config.Accounts
@@ -377,7 +364,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.current.Init()
 
 	case tui.GoToChoiceMenuMsg:
-		m.current = tui.NewChoice(m.cachedComposer != nil)
+		m.current = tui.NewChoice()
 		return m, m.current.Init()
 
 	case tui.DeleteAccountMsg:
@@ -472,7 +459,6 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if composer, ok := m.current.(*tui.Composer); ok {
 			draftID = composer.GetDraftID()
 		}
-		m.cachedComposer = nil
 		m.current = tui.NewStatus("Sending email...")
 
 		// Get the account to send from
@@ -505,7 +491,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.current.Init(), sendEmail(account, msg))
 
 	case tui.EmailResultMsg:
-		m.current = tui.NewChoice(m.cachedComposer != nil)
+		m.current = tui.NewChoice()
 		return m, m.current.Init()
 
 	case tui.DeleteEmailMsg:

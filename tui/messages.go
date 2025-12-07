@@ -127,9 +127,6 @@ type DiscardDraftMsg struct {
 	ComposerState *Composer
 }
 
-// RestoreDraftMsg signals that the cached draft should be restored.
-type RestoreDraftMsg struct{}
-
 type EmailBodyFetchedMsg struct {
 	UID         uint32
 	Body        string
