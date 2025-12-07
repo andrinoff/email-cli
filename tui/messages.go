@@ -109,6 +109,7 @@ type DownloadAttachmentMsg struct {
 	PartID    string
 	Data      []byte
 	AccountID string
+	Encoding  string
 }
 
 type AttachmentDownloadedMsg struct {

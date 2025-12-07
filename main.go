@@ -551,7 +551,23 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		return m, tea.Batch(m.current.Init(), downloadAttachmentCmd(account, email.UID, msg))
+		// Find the correct attachment to get encoding
+		var encoding string
+		for _, att := range email.Attachments {
+			if att.PartID == msg.PartID {
+				encoding = att.Encoding
+				break
+			}
+		}
+		newMsg := tui.DownloadAttachmentMsg{
+			Index:     msg.Index,
+			Filename:  msg.Filename,
+			PartID:    msg.PartID,
+			Data:      msg.Data,
+			AccountID: msg.AccountID,
+			Encoding:  encoding,
+		}
+		return m, tea.Batch(m.current.Init(), downloadAttachmentCmd(account, email.UID, newMsg))
 
 	case tui.AttachmentDownloadedMsg:
 		var statusMsg string
@@ -861,7 +877,8 @@ func archiveEmailCmd(account *config.Account, uid uint32, accountID string) tea.
 
 func downloadAttachmentCmd(account *config.Account, uid uint32, msg tui.DownloadAttachmentMsg) tea.Cmd {
 	return func() tea.Msg {
-		data, err := fetcher.FetchAttachment(account, uid, msg.PartID)
+		// Download and decode the attachment using encoding provided in msg.Encoding.
+		data, err := fetcher.FetchAttachment(account, uid, msg.PartID, msg.Encoding)
 		if err != nil {
 			return tui.AttachmentDownloadedMsg{Err: err}
 		}

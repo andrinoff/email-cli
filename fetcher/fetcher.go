@@ -24,6 +24,7 @@ type Attachment struct {
 	Filename string
 	PartID   string // Keep PartID to fetch on demand
 	Data     []byte
+	Encoding string // Store encoding for proper decoding
 }
 
 type Email struct {
@@ -250,7 +251,11 @@ func FetchEmailBody(account *config.Account, uid uint32) (string, []Attachment, 
 
 		// Add as attachment if it has a disposition or a filename (and not just plain text)
 		if filename != "" && (part.Disposition == "attachment" || part.Disposition == "inline" || part.MIMEType != "text") {
-			attachments = append(attachments, Attachment{Filename: filename, PartID: partID})
+			attachments = append(attachments, Attachment{
+				Filename: filename,
+				PartID:   partID,
+				Encoding: part.Encoding, // Store encoding for proper decoding
+			})
 		}
 	}
 
@@ -345,7 +350,7 @@ func FetchEmailBody(account *config.Account, uid uint32) (string, []Attachment, 
 	return body, attachments, nil
 }
 
-func FetchAttachment(account *config.Account, uid uint32, partID string) ([]byte, error) {
+func FetchAttachment(account *config.Account, uid uint32, partID string, encoding string) ([]byte, error) {
 	c, err := connect(account)
 	if err != nil {
 		return nil, err
@@ -385,7 +390,28 @@ func FetchAttachment(account *config.Account, uid uint32, partID string) ([]byte
 		return nil, fmt.Errorf("could not get attachment body")
 	}
 
-	return ioutil.ReadAll(literal)
+	rawBytes, err := ioutil.ReadAll(literal)
+	if err != nil {
+		return nil, err
+	}
+
+	switch strings.ToLower(encoding) {
+	case "base64":
+		decoder := base64.NewDecoder(base64.StdEncoding, bytes.NewReader(rawBytes))
+		decoded, err := ioutil.ReadAll(decoder)
+		if err == nil {
+			return decoded, nil
+		}
+		return rawBytes, nil
+	case "quoted-printable":
+		decoded, err := ioutil.ReadAll(quotedprintable.NewReader(bytes.NewReader(rawBytes)))
+		if err == nil {
+			return decoded, nil
+		}
+		return rawBytes, nil
+	default:
+		return rawBytes, nil
+	}
 }
 
 func moveEmail(account *config.Account, uid uint32, destMailbox string) error {
