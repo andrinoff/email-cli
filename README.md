@@ -40,6 +40,8 @@ A beautiful and functional email client for your terminal, built with Go and the
 
 </div>
 
+![Demo GIF](public/assets/demo.gif)
+
 ## Features ✨
 
 - **View Your Inbox**: Fetches and displays a list of your most recent emails.
