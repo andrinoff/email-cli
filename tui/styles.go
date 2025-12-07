@@ -10,7 +10,7 @@ import (
 
 // ASCII logo for Matcha displayed during loading screens
 const asciiLogo = `
-                 __       __
+                	__       __
    ____ ___  ____ _/ /______/ /_  ____ _
   / __ '__ \/ __ '/ __/ ___/ __ \/ __ '/
  / / / / / / /_/ / /_/ /__/ / / / /_/ /

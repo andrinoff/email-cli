@@ -8,6 +8,14 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/floatpane/matcha/config"
+	"github.com/google/uuid"
+)
+
+var (
+	suggestionStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	selectedSuggestionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
+	suggestionBoxStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1)
 )
 
 // Styles for the UI
@@ -20,7 +28,17 @@ var (
 	focusedButton       = focusedStyle.Copy().Render("[ Send ]")
 	blurredButton       = blurredStyle.Copy().Render("[ Send ]")
 	emailRecipientStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
-	attachmentStyle     = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("240")) // This was the missing style
+	attachmentStyle     = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("240"))
+	fromSelectorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+)
+
+const (
+	focusFrom = iota
+	focusTo
+	focusSubject
+	focusBody
+	focusAttachment
+	focusSend
 )
 
 // Composer model holds the state of the email composition UI.
@@ -30,21 +48,39 @@ type Composer struct {
 	subjectInput   textinput.Model
 	bodyInput      textarea.Model
 	attachmentPath string
-	fromAddr       string
 	width          int
 	height         int
 	confirmingExit bool
+
+	// Multi-account support
+	accounts           []config.Account
+	selectedAccountIdx int
+	showAccountPicker  bool
+
+	// Contact suggestions
+	suggestions        []config.Contact
+	selectedSuggestion int
+	showSuggestions    bool
+	lastToValue        string
+
+	// Draft persistence
+	draftID string
+
+	// Reply context
+	inReplyTo  string
+	references []string
 }
 
 // NewComposer initializes a new composer model.
 func NewComposer(from, to, subject, body string) *Composer {
-	m := &Composer{fromAddr: from}
+	m := &Composer{
+		draftID: uuid.New().String(),
+	}
 
 	m.toInput = textinput.New()
 	m.toInput.Cursor.Style = cursorStyle
 	m.toInput.Placeholder = "To"
 	m.toInput.SetValue(to)
-	m.toInput.Focus()
 	m.toInput.Prompt = "> "
 	m.toInput.CharLimit = 256
 
@@ -63,6 +99,26 @@ func NewComposer(from, to, subject, body string) *Composer {
 	m.bodyInput.SetHeight(10)
 	m.bodyInput.SetCursor(0)
 
+	// Start focus on To field (From is selectable but not a text input)
+	m.focusIndex = focusTo
+	m.toInput.Focus()
+
+	return m
+}
+
+// NewComposerWithAccounts initializes a composer with multiple account support.
+func NewComposerWithAccounts(accounts []config.Account, selectedAccountID string, to, subject, body string) *Composer {
+	m := NewComposer("", to, subject, body)
+	m.accounts = accounts
+
+	// Find the selected account index
+	for i, acc := range accounts {
+		if acc.ID == selectedAccountID {
+			m.selectedAccountIdx = i
+			break
+		}
+	}
+
 	return m
 }
 
@@ -73,6 +129,24 @@ func (m *Composer) ResetConfirmation() {
 
 func (m *Composer) Init() tea.Cmd {
 	return textinput.Blink
+}
+
+func (m *Composer) getFromAddress() string {
+	if len(m.accounts) > 0 && m.selectedAccountIdx < len(m.accounts) {
+		acc := m.accounts[m.selectedAccountIdx]
+		if acc.Name != "" {
+			return fmt.Sprintf("%s <%s>", acc.Name, acc.Email)
+		}
+		return acc.Email
+	}
+	return ""
+}
+
+func (m *Composer) getSelectedAccount() *config.Account {
+	if len(m.accounts) > 0 && m.selectedAccountIdx < len(m.accounts) {
+		return &m.accounts[m.selectedAccountIdx]
+	}
+	return nil
 }
 
 func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -97,6 +171,62 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// Handle contact suggestions mode
+		if m.showSuggestions && len(m.suggestions) > 0 {
+			switch msg.String() {
+			case "up", "ctrl+p":
+				if m.selectedSuggestion > 0 {
+					m.selectedSuggestion--
+				}
+				return m, nil
+			case "down", "ctrl+n":
+				if m.selectedSuggestion < len(m.suggestions)-1 {
+					m.selectedSuggestion++
+				}
+				return m, nil
+			case "tab", "enter":
+				// Select the suggestion
+				selected := m.suggestions[m.selectedSuggestion]
+				if selected.Name != "" && selected.Name != selected.Email {
+					m.toInput.SetValue(fmt.Sprintf("%s <%s>", selected.Name, selected.Email))
+				} else {
+					m.toInput.SetValue(selected.Email)
+				}
+				m.lastToValue = m.toInput.Value()
+				m.showSuggestions = false
+				m.suggestions = nil
+				return m, nil
+			case "esc":
+				m.showSuggestions = false
+				m.suggestions = nil
+				return m, nil
+			}
+			// For shift+tab, close suggestions and let it fall through to normal handling
+			if msg.Type == tea.KeyShiftTab {
+				m.showSuggestions = false
+				m.suggestions = nil
+			}
+		}
+
+		// Handle account picker mode
+		if m.showAccountPicker {
+			switch msg.String() {
+			case "up", "k":
+				if m.selectedAccountIdx > 0 {
+					m.selectedAccountIdx--
+				}
+			case "down", "j":
+				if m.selectedAccountIdx < len(m.accounts)-1 {
+					m.selectedAccountIdx++
+				}
+			case "enter":
+				m.showAccountPicker = false
+			case "esc":
+				m.showAccountPicker = false
+			}
+			return m, nil
+		}
+
 		if m.confirmingExit {
 			switch msg.String() {
 			case "y", "Y":
@@ -123,10 +253,17 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focusIndex++
 			}
 
-			if m.focusIndex > 4 {
-				m.focusIndex = 0
-			} else if m.focusIndex < 0 {
-				m.focusIndex = 4
+			maxFocus := focusSend
+			minFocus := focusFrom
+			// Skip From field if only one account (nothing to switch)
+			if len(m.accounts) <= 1 {
+				minFocus = focusTo
+			}
+
+			if m.focusIndex > maxFocus {
+				m.focusIndex = minFocus
+			} else if m.focusIndex < minFocus {
+				m.focusIndex = maxFocus
 			}
 
 			m.toInput.Blur()
@@ -134,27 +271,38 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.bodyInput.Blur()
 
 			switch m.focusIndex {
-			case 0:
+			case focusTo:
 				cmds = append(cmds, m.toInput.Focus())
-			case 1:
+			case focusSubject:
 				cmds = append(cmds, m.subjectInput.Focus())
-			case 2:
+			case focusBody:
 				cmds = append(cmds, m.bodyInput.Focus())
 				cmds = append(cmds, func() tea.Msg { return SetComposerCursorToStartMsg{} })
 			}
 			return m, tea.Batch(cmds...)
 
 		case tea.KeyEnter:
-			if m.focusIndex == 3 {
+			switch m.focusIndex {
+			case focusFrom:
+				if len(m.accounts) > 1 {
+					m.showAccountPicker = true
+				}
+				return m, nil
+			case focusAttachment:
 				return m, func() tea.Msg { return GoToFilePickerMsg{} }
-			}
-			if m.focusIndex == 4 {
+			case focusSend:
+				acc := m.getSelectedAccount()
+				accountID := ""
+				if acc != nil {
+					accountID = acc.ID
+				}
 				return m, func() tea.Msg {
 					return SendEmailMsg{
 						To:             m.toInput.Value(),
 						Subject:        m.subjectInput.Value(),
 						Body:           m.bodyInput.Value(),
 						AttachmentPath: m.attachmentPath,
+						AccountID:      accountID,
 					}
 				}
 			}
@@ -162,13 +310,27 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.focusIndex {
-	case 0:
+	case focusTo:
 		m.toInput, cmd = m.toInput.Update(msg)
 		cmds = append(cmds, cmd)
-	case 1:
+
+		// Check if To field value changed and update suggestions
+		currentValue := m.toInput.Value()
+		if currentValue != m.lastToValue {
+			m.lastToValue = currentValue
+			if len(currentValue) >= 2 {
+				m.suggestions = config.SearchContacts(currentValue)
+				m.showSuggestions = len(m.suggestions) > 0
+				m.selectedSuggestion = 0
+			} else {
+				m.showSuggestions = false
+				m.suggestions = nil
+			}
+		}
+	case focusSubject:
 		m.subjectInput, cmd = m.subjectInput.Update(msg)
 		cmds = append(cmds, cmd)
-	case 2:
+	case focusBody:
 		m.bodyInput, cmd = m.bodyInput.Update(msg)
 		cmds = append(cmds, cmd)
 	}
@@ -180,10 +342,25 @@ func (m *Composer) View() string {
 	var composerView strings.Builder
 	var button string
 
-	if m.focusIndex == 4 {
+	if m.focusIndex == focusSend {
 		button = focusedButton
 	} else {
 		button = blurredButton
+	}
+
+	// From field with account selector
+	fromAddr := m.getFromAddress()
+	var fromField string
+	if len(m.accounts) > 1 {
+		if m.focusIndex == focusFrom {
+			fromField = focusedStyle.Render(fmt.Sprintf("> From: %s [Enter to switch]", fromAddr))
+		} else {
+			fromField = blurredStyle.Render(fmt.Sprintf("  From: %s [switchable]", fromAddr))
+		}
+	} else if fromAddr != "" {
+		fromField = "  From: " + emailRecipientStyle.Render(fromAddr)
+	} else {
+		fromField = blurredStyle.Render("  From: (no account configured)")
 	}
 
 	var attachmentField string
@@ -192,22 +369,63 @@ func (m *Composer) View() string {
 		attachmentText = m.attachmentPath
 	}
 
-	if m.focusIndex == 3 {
+	if m.focusIndex == focusAttachment {
 		attachmentField = focusedStyle.Render(fmt.Sprintf("> Attachment: %s", attachmentText))
 	} else {
 		attachmentField = blurredStyle.Render(fmt.Sprintf("  Attachment: %s", attachmentText))
 	}
 
+	// Build To field with suggestions
+	toFieldView := m.toInput.View()
+	if m.showSuggestions && len(m.suggestions) > 0 {
+		var suggestionsBuilder strings.Builder
+		for i, s := range m.suggestions {
+			display := s.Email
+			if s.Name != "" && s.Name != s.Email {
+				display = fmt.Sprintf("%s <%s>", s.Name, s.Email)
+			}
+			if i == m.selectedSuggestion {
+				suggestionsBuilder.WriteString(selectedSuggestionStyle.Render("> "+display) + "\n")
+			} else {
+				suggestionsBuilder.WriteString(suggestionStyle.Render("  "+display) + "\n")
+			}
+		}
+		toFieldView = toFieldView + "\n" + suggestionBoxStyle.Render(strings.TrimSuffix(suggestionsBuilder.String(), "\n"))
+	}
+
 	composerView.WriteString(lipgloss.JoinVertical(lipgloss.Left,
 		"Compose New Email",
-		"From: "+emailRecipientStyle.Render(m.fromAddr),
-		m.toInput.View(),
+		fromField,
+		toFieldView,
 		m.subjectInput.View(),
 		m.bodyInput.View(),
 		attachmentStyle.Render(attachmentField),
 		button,
-		helpStyle.Render("Markdown/HTML • tab: next field • esc: back to menu"),
+		helpStyle.Render("Markdown/HTML • tab/shift+tab: navigate • esc: save draft & exit"),
 	))
+
+	// Account picker overlay
+	if m.showAccountPicker {
+		var accountList strings.Builder
+		accountList.WriteString("Select Account:\n\n")
+		for i, acc := range m.accounts {
+			display := acc.Email
+			if acc.Name != "" {
+				display = fmt.Sprintf("%s (%s)", acc.Name, acc.Email)
+			}
+			if i == m.selectedAccountIdx {
+				accountList.WriteString(selectedItemStyle.Render(fmt.Sprintf("> %s", display)))
+			} else {
+				accountList.WriteString(itemStyle.Render(fmt.Sprintf("  %s", display)))
+			}
+			accountList.WriteString("\n")
+		}
+		accountList.WriteString("\n")
+		accountList.WriteString(HelpStyle.Render("↑/↓: navigate • enter: select • esc: cancel"))
+
+		dialog := DialogBoxStyle.Render(accountList.String())
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, dialog)
+	}
 
 	if m.confirmingExit {
 		dialog := DialogBoxStyle.Render(
@@ -220,4 +438,100 @@ func (m *Composer) View() string {
 	}
 
 	return composerView.String()
+}
+
+// SetAccounts sets the available accounts for sending.
+func (m *Composer) SetAccounts(accounts []config.Account) {
+	m.accounts = accounts
+	if m.selectedAccountIdx >= len(accounts) {
+		m.selectedAccountIdx = 0
+	}
+}
+
+// SetSelectedAccount sets the selected account by ID.
+func (m *Composer) SetSelectedAccount(accountID string) {
+	for i, acc := range m.accounts {
+		if acc.ID == accountID {
+			m.selectedAccountIdx = i
+			return
+		}
+	}
+}
+
+// GetSelectedAccountID returns the ID of the currently selected account.
+func (m *Composer) GetSelectedAccountID() string {
+	if len(m.accounts) > 0 && m.selectedAccountIdx < len(m.accounts) {
+		return m.accounts[m.selectedAccountIdx].ID
+	}
+	return ""
+}
+
+// GetDraftID returns the draft ID for this composer.
+func (m *Composer) GetDraftID() string {
+	return m.draftID
+}
+
+// SetDraftID sets the draft ID (for loading existing drafts).
+func (m *Composer) SetDraftID(id string) {
+	m.draftID = id
+}
+
+// GetTo returns the current To field value.
+func (m *Composer) GetTo() string {
+	return m.toInput.Value()
+}
+
+// GetSubject returns the current Subject field value.
+func (m *Composer) GetSubject() string {
+	return m.subjectInput.Value()
+}
+
+// GetBody returns the current Body field value.
+func (m *Composer) GetBody() string {
+	return m.bodyInput.Value()
+}
+
+// GetAttachmentPath returns the current attachment path.
+func (m *Composer) GetAttachmentPath() string {
+	return m.attachmentPath
+}
+
+// SetReplyContext sets the reply context for the draft.
+func (m *Composer) SetReplyContext(inReplyTo string, references []string) {
+	m.inReplyTo = inReplyTo
+	m.references = references
+}
+
+// GetInReplyTo returns the In-Reply-To header value.
+func (m *Composer) GetInReplyTo() string {
+	return m.inReplyTo
+}
+
+// GetReferences returns the References header values.
+func (m *Composer) GetReferences() []string {
+	return m.references
+}
+
+// ToDraft converts the composer state to a Draft for saving.
+func (m *Composer) ToDraft() config.Draft {
+	return config.Draft{
+		ID:             m.draftID,
+		To:             m.toInput.Value(),
+		Subject:        m.subjectInput.Value(),
+		Body:           m.bodyInput.Value(),
+		AttachmentPath: m.attachmentPath,
+		AccountID:      m.GetSelectedAccountID(),
+		InReplyTo:      m.inReplyTo,
+		References:     m.references,
+	}
+}
+
+// NewComposerFromDraft creates a composer from an existing draft.
+func NewComposerFromDraft(draft config.Draft, accounts []config.Account) *Composer {
+	m := NewComposerWithAccounts(accounts, draft.AccountID, draft.To, draft.Subject, draft.Body)
+	m.draftID = draft.ID
+	m.attachmentPath = draft.AttachmentPath
+	m.inReplyTo = draft.InReplyTo
+	m.references = draft.References
+	return m
 }

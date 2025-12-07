@@ -3,23 +3,30 @@ package tui
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/fetcher"
 )
 
 var (
 	paginationStyle = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
 	inboxHelpStyle  = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
+	tabStyle        = lipgloss.NewStyle().Padding(0, 2)
+	activeTabStyle  = lipgloss.NewStyle().Padding(0, 2).Foreground(lipgloss.Color("42")).Bold(true).Underline(true)
+	tabBarStyle     = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderBottom(true).PaddingBottom(1).MarginBottom(1)
 )
 
 type item struct {
 	title, desc   string
 	originalIndex int
-	uid           uint32 // Added UID to item
+	uid           uint32
+	accountID     string
+	accountEmail  string
 }
 
 func (i item) Title() string       { return i.title }
@@ -39,6 +46,11 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 
 	str := fmt.Sprintf("%d. %s", index+1, i.title)
 
+	// For "ALL" view, show account indicator
+	if i.accountEmail != "" {
+		str = fmt.Sprintf("%d. [%s] %s", index+1, truncateEmail(i.accountEmail), i.title)
+	}
+
 	fn := itemStyle.Render
 	if index == m.Index() {
 		fn = func(s ...string) string {
@@ -49,25 +61,122 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	fmt.Fprint(w, fn(str))
 }
 
-type Inbox struct {
-	list        list.Model
-	isFetching  bool
-	emailsCount int
+// truncateEmail shortens an email for display
+func truncateEmail(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) >= 1 && len(parts[0]) > 8 {
+		return parts[0][:8] + "..."
+	}
+	if len(parts) >= 1 {
+		return parts[0]
+	}
+	return email
 }
 
-func NewInbox(emails []fetcher.Email) *Inbox {
-	items := make([]list.Item, len(emails))
-	for i, email := range emails {
+// AccountTab represents a tab for an account
+type AccountTab struct {
+	ID    string
+	Label string
+	Email string
+}
+
+type Inbox struct {
+	list             list.Model
+	isFetching       bool
+	isRefreshing     bool
+	emailsCount      int
+	accounts         []config.Account
+	emailsByAccount  map[string][]fetcher.Email
+	allEmails        []fetcher.Email
+	tabs             []AccountTab
+	activeTabIndex   int
+	width            int
+	height           int
+	currentAccountID string // Empty means "ALL"
+	emailCountByAcct map[string]int
+}
+
+func NewInbox(emails []fetcher.Email, accounts []config.Account) *Inbox {
+	// Build tabs: "ALL" + one per account
+	tabs := []AccountTab{{ID: "", Label: "ALL", Email: ""}}
+	for _, acc := range accounts {
+		label := acc.Email
+		if acc.Name != "" {
+			label = acc.Name
+		}
+		tabs = append(tabs, AccountTab{ID: acc.ID, Label: label, Email: acc.Email})
+	}
+
+	// Group emails by account
+	emailsByAccount := make(map[string][]fetcher.Email)
+	for _, email := range emails {
+		emailsByAccount[email.AccountID] = append(emailsByAccount[email.AccountID], email)
+	}
+
+	// Track email counts per account
+	emailCountByAcct := make(map[string]int)
+	for accID, accEmails := range emailsByAccount {
+		emailCountByAcct[accID] = len(accEmails)
+	}
+
+	inbox := &Inbox{
+		accounts:         accounts,
+		emailsByAccount:  emailsByAccount,
+		allEmails:        emails,
+		tabs:             tabs,
+		activeTabIndex:   0,
+		currentAccountID: "",
+		emailCountByAcct: emailCountByAcct,
+	}
+
+	inbox.updateList()
+	return inbox
+}
+
+// NewInboxSingleAccount creates an inbox for a single account (legacy support)
+func NewInboxSingleAccount(emails []fetcher.Email) *Inbox {
+	return NewInbox(emails, nil)
+}
+
+func (m *Inbox) updateList() {
+	var displayEmails []fetcher.Email
+	var showAccountLabel bool
+
+	if m.currentAccountID == "" {
+		// "ALL" view - show all emails sorted by date
+		displayEmails = m.allEmails
+		showAccountLabel = len(m.accounts) > 1
+	} else {
+		// Specific account view
+		displayEmails = m.emailsByAccount[m.currentAccountID]
+		showAccountLabel = false
+	}
+
+	items := make([]list.Item, len(displayEmails))
+	for i, email := range displayEmails {
+		accountEmail := ""
+		if showAccountLabel {
+			// Find the account email for display
+			for _, acc := range m.accounts {
+				if acc.ID == email.AccountID {
+					accountEmail = acc.Email
+					break
+				}
+			}
+		}
+
 		items[i] = item{
 			title:         email.Subject,
 			desc:          email.From,
 			originalIndex: i,
-			uid:           email.UID, // Store UID
+			uid:           email.UID,
+			accountID:     email.AccountID,
+			accountEmail:  accountEmail,
 		}
 	}
 
 	l := list.New(items, itemDelegate{}, 20, 14)
-	l.Title = "Inbox"
+	l.Title = m.getTitle()
 	l.SetShowStatusBar(true)
 	l.SetFilteringEnabled(true)
 	l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
@@ -75,20 +184,50 @@ func NewInbox(emails []fetcher.Email) *Inbox {
 	l.Styles.HelpStyle = inboxHelpStyle
 	l.SetStatusBarItemName("email", "emails")
 	l.AdditionalShortHelpKeys = func() []key.Binding {
-		return []key.Binding{
+		bindings := []key.Binding{
 			key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
-			key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl + c", "quit")),
 		}
+		if len(m.tabs) > 1 {
+			bindings = append(bindings,
+				key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "prev tab")),
+				key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "next tab")),
+			)
+		}
+		return bindings
 	}
 
 	l.KeyMap.Quit.SetEnabled(false)
 
-	return &Inbox{
-		list:        l,
-		isFetching:  false,
-		emailsCount: len(emails),
+	if m.width > 0 {
+		l.SetWidth(m.width)
 	}
+
+	m.list = l
+	m.emailsCount = len(displayEmails)
+}
+
+func (m *Inbox) getTitle() string {
+	var title string
+	if m.currentAccountID == "" {
+		title = "Inbox - All Accounts"
+	} else {
+		title = "Inbox"
+		for _, acc := range m.accounts {
+			if acc.ID == m.currentAccountID {
+				if acc.Name != "" {
+					title = fmt.Sprintf("Inbox - %s", acc.Name)
+				} else {
+					title = fmt.Sprintf("Inbox - %s", acc.Email)
+				}
+				break
+			}
+		}
+	}
+	if m.isRefreshing {
+		title += " (refreshing...)"
+	}
+	return title
 }
 
 func (m *Inbox) Init() tea.Cmd {
@@ -104,29 +243,54 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		switch keypress := msg.String(); keypress {
+		case "left", "h":
+			if len(m.tabs) > 1 {
+				m.activeTabIndex--
+				if m.activeTabIndex < 0 {
+					m.activeTabIndex = len(m.tabs) - 1
+				}
+				m.currentAccountID = m.tabs[m.activeTabIndex].ID
+				m.updateList()
+				return m, nil
+			}
+		case "right", "l":
+			if len(m.tabs) > 1 {
+				m.activeTabIndex++
+				if m.activeTabIndex >= len(m.tabs) {
+					m.activeTabIndex = 0
+				}
+				m.currentAccountID = m.tabs[m.activeTabIndex].ID
+				m.updateList()
+				return m, nil
+			}
 		case "d":
 			selectedItem, ok := m.list.SelectedItem().(item)
 			if ok {
 				return m, func() tea.Msg {
-					return DeleteEmailMsg{UID: selectedItem.uid}
+					return DeleteEmailMsg{UID: selectedItem.uid, AccountID: selectedItem.accountID}
 				}
 			}
 		case "a":
 			selectedItem, ok := m.list.SelectedItem().(item)
 			if ok {
 				return m, func() tea.Msg {
-					return ArchiveEmailMsg{UID: selectedItem.uid}
+					return ArchiveEmailMsg{UID: selectedItem.uid, AccountID: selectedItem.accountID}
 				}
 			}
 		case "enter":
 			selectedItem, ok := m.list.SelectedItem().(item)
 			if ok {
+				idx := selectedItem.originalIndex
+				uid := selectedItem.uid
+				accountID := selectedItem.accountID
 				return m, func() tea.Msg {
-					return ViewEmailMsg{Index: selectedItem.originalIndex}
+					return ViewEmailMsg{Index: idx, UID: uid, AccountID: accountID}
 				}
 			}
 		}
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 		m.list.SetWidth(msg.Width)
 		return m, nil
 
@@ -137,28 +301,67 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case EmailsAppendedMsg:
 		m.isFetching = false
-		m.list.Title = "Inbox"
-		newItems := make([]list.Item, len(msg.Emails))
-		for i, email := range msg.Emails {
-			newItems[i] = item{
-				title:         email.Subject,
-				desc:          email.From,
-				originalIndex: m.emailsCount + i,
-				uid:           email.UID,
+		m.list.Title = m.getTitle()
+
+		// Add emails to the appropriate account
+		for _, email := range msg.Emails {
+			m.emailsByAccount[email.AccountID] = append(m.emailsByAccount[email.AccountID], email)
+			m.allEmails = append(m.allEmails, email)
+		}
+		m.emailCountByAcct[msg.AccountID] = len(m.emailsByAccount[msg.AccountID])
+
+		m.updateList()
+		return m, nil
+
+	case RefreshingEmailsMsg:
+		m.isRefreshing = true
+		m.list.Title = m.getTitle()
+		return m, nil
+
+	case EmailsRefreshedMsg:
+		m.isRefreshing = false
+
+		// Replace emails with fresh data
+		m.emailsByAccount = msg.EmailsByAccount
+
+		// Flatten all emails
+		var allEmails []fetcher.Email
+		for _, emails := range msg.EmailsByAccount {
+			allEmails = append(allEmails, emails...)
+		}
+
+		// Sort by date (newest first)
+		for i := 0; i < len(allEmails); i++ {
+			for j := i + 1; j < len(allEmails); j++ {
+				if allEmails[j].Date.After(allEmails[i].Date) {
+					allEmails[i], allEmails[j] = allEmails[j], allEmails[i]
+				}
 			}
 		}
-		currentItems := m.list.Items()
-		allItems := append(currentItems, newItems...)
-		cmd := m.list.SetItems(allItems)
-		m.emailsCount += len(msg.Emails)
-		cmds = append(cmds, cmd)
-		return m, tea.Batch(cmds...)
+
+		m.allEmails = allEmails
+
+		// Update email counts
+		m.emailCountByAcct = make(map[string]int)
+		for accID, accEmails := range m.emailsByAccount {
+			m.emailCountByAcct[accID] = len(accEmails)
+		}
+
+		m.updateList()
+		return m, nil
 	}
 
 	if !m.isFetching && len(m.list.Items()) > 0 && m.list.Index() >= len(m.list.Items())-5 {
-		cmds = append(cmds, func() tea.Msg {
-			return FetchMoreEmailsMsg{Offset: uint32(m.emailsCount)}
-		})
+		accountID := m.currentAccountID
+		offset := uint32(m.emailsCount)
+		if accountID == "" && len(m.accounts) > 0 {
+			// For "ALL" view, we'd need to fetch from all accounts
+			// For simplicity, don't auto-fetch more in ALL view
+		} else if accountID != "" {
+			cmds = append(cmds, func() tea.Msg {
+				return FetchMoreEmailsMsg{Offset: offset, AccountID: accountID}
+			})
+		}
 	}
 
 	var cmd tea.Cmd
@@ -168,5 +371,104 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Inbox) View() string {
-	return "\n" + m.list.View()
+	var b strings.Builder
+
+	// Render tabs if there are multiple accounts
+	if len(m.tabs) > 1 {
+		var tabViews []string
+		for i, tab := range m.tabs {
+			label := tab.Label
+			if tab.ID == "" {
+				label = "ALL"
+			}
+
+			if i == m.activeTabIndex {
+				tabViews = append(tabViews, activeTabStyle.Render(label))
+			} else {
+				tabViews = append(tabViews, tabStyle.Render(label))
+			}
+		}
+		tabBar := tabBarStyle.Render(lipgloss.JoinHorizontal(lipgloss.Top, tabViews...))
+		b.WriteString(tabBar)
+		b.WriteString("\n")
+	}
+
+	b.WriteString(m.list.View())
+	return "\n" + b.String()
+}
+
+// GetCurrentAccountID returns the currently selected account ID
+func (m *Inbox) GetCurrentAccountID() string {
+	return m.currentAccountID
+}
+
+// GetEmailAtIndex returns the email at the given index for the current view
+func (m *Inbox) GetEmailAtIndex(index int) *fetcher.Email {
+	var displayEmails []fetcher.Email
+	if m.currentAccountID == "" {
+		displayEmails = m.allEmails
+	} else {
+		displayEmails = m.emailsByAccount[m.currentAccountID]
+	}
+
+	if index >= 0 && index < len(displayEmails) {
+		return &displayEmails[index]
+	}
+	return nil
+}
+
+// RemoveEmail removes an email by UID and account ID
+func (m *Inbox) RemoveEmail(uid uint32, accountID string) {
+	// Remove from account-specific list
+	if emails, ok := m.emailsByAccount[accountID]; ok {
+		var filtered []fetcher.Email
+		for _, e := range emails {
+			if e.UID != uid {
+				filtered = append(filtered, e)
+			}
+		}
+		m.emailsByAccount[accountID] = filtered
+	}
+
+	// Remove from all emails list
+	var filteredAll []fetcher.Email
+	for _, e := range m.allEmails {
+		if !(e.UID == uid && e.AccountID == accountID) {
+			filteredAll = append(filteredAll, e)
+		}
+	}
+	m.allEmails = filteredAll
+
+	m.updateList()
+}
+
+// SetEmails updates all emails (used after fetch)
+func (m *Inbox) SetEmails(emails []fetcher.Email, accounts []config.Account) {
+	m.accounts = accounts
+	m.allEmails = emails
+
+	// Rebuild tabs
+	tabs := []AccountTab{{ID: "", Label: "ALL", Email: ""}}
+	for _, acc := range accounts {
+		label := acc.Email
+		if acc.Name != "" {
+			label = acc.Name
+		}
+		tabs = append(tabs, AccountTab{ID: acc.ID, Label: label, Email: acc.Email})
+	}
+	m.tabs = tabs
+
+	// Re-group emails by account
+	m.emailsByAccount = make(map[string][]fetcher.Email)
+	for _, email := range emails {
+		m.emailsByAccount[email.AccountID] = append(m.emailsByAccount[email.AccountID], email)
+	}
+
+	// Update email counts
+	m.emailCountByAcct = make(map[string]int)
+	for accID, accEmails := range m.emailsByAccount {
+		m.emailCountByAcct[accID] = len(accEmails)
+	}
+
+	m.updateList()
 }

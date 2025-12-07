@@ -36,6 +36,7 @@ type Email struct {
 	MessageID   string
 	References  []string
 	Attachments []Attachment
+	AccountID   string // ID of the account this email belongs to
 }
 
 func decodePart(reader io.Reader, header mail.PartHeader) (string, error) {
@@ -84,19 +85,12 @@ func decodeHeader(header string) string {
 	return decoded
 }
 
-func connect(cfg *config.Config) (*client.Client, error) {
-	var imapServer string
-	var imapPort int
+func connect(account *config.Account) (*client.Client, error) {
+	imapServer := account.GetIMAPServer()
+	imapPort := account.GetIMAPPort()
 
-	switch cfg.ServiceProvider {
-	case "gmail":
-		imapServer = "imap.gmail.com"
-		imapPort = 993
-	case "icloud":
-		imapServer = "imap.mail.me.com"
-		imapPort = 993
-	default:
-		return nil, fmt.Errorf("unsupported service_provider: %s", cfg.ServiceProvider)
+	if imapServer == "" {
+		return nil, fmt.Errorf("unsupported service_provider: %s", account.ServiceProvider)
 	}
 
 	addr := fmt.Sprintf("%s:%d", imapServer, imapPort)
@@ -105,15 +99,15 @@ func connect(cfg *config.Config) (*client.Client, error) {
 		return nil, err
 	}
 
-	if err := c.Login(cfg.Email, cfg.Password); err != nil {
+	if err := c.Login(account.Email, account.Password); err != nil {
 		return nil, err
 	}
 
 	return c, nil
 }
 
-func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
-	c, err := connect(cfg)
+func FetchEmails(account *config.Account, limit, offset uint32) ([]Email, error) {
+	c, err := connect(account)
 	if err != nil {
 		return nil, err
 	}
@@ -174,11 +168,12 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 		}
 
 		emails = append(emails, Email{
-			UID:     msg.Uid,
-			From:    fromAddr,
-			To:      toAddrList,
-			Subject: decodeHeader(msg.Envelope.Subject),
-			Date:    msg.Envelope.Date,
+			UID:       msg.Uid,
+			From:      fromAddr,
+			To:        toAddrList,
+			Subject:   decodeHeader(msg.Envelope.Subject),
+			Date:      msg.Envelope.Date,
+			AccountID: account.ID,
 		})
 	}
 
@@ -189,8 +184,8 @@ func FetchEmails(cfg *config.Config, limit, offset uint32) ([]Email, error) {
 	return emails, nil
 }
 
-func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error) {
-	c, err := connect(cfg)
+func FetchEmailBody(account *config.Account, uid uint32) (string, []Attachment, error) {
+	c, err := connect(account)
 	if err != nil {
 		return "", nil, err
 	}
@@ -350,8 +345,8 @@ func FetchEmailBody(cfg *config.Config, uid uint32) (string, []Attachment, error
 	return body, attachments, nil
 }
 
-func FetchAttachment(cfg *config.Config, uid uint32, partID string) ([]byte, error) {
-	c, err := connect(cfg)
+func FetchAttachment(account *config.Account, uid uint32, partID string) ([]byte, error) {
+	c, err := connect(account)
 	if err != nil {
 		return nil, err
 	}
@@ -393,8 +388,8 @@ func FetchAttachment(cfg *config.Config, uid uint32, partID string) ([]byte, err
 	return ioutil.ReadAll(literal)
 }
 
-func moveEmail(cfg *config.Config, uid uint32, destMailbox string) error {
-	c, err := connect(cfg)
+func moveEmail(account *config.Account, uid uint32, destMailbox string) error {
+	c, err := connect(account)
 	if err != nil {
 		return err
 	}
@@ -410,8 +405,8 @@ func moveEmail(cfg *config.Config, uid uint32, destMailbox string) error {
 	return c.UidMove(seqSet, destMailbox)
 }
 
-func DeleteEmail(cfg *config.Config, uid uint32) error {
-	c, err := connect(cfg)
+func DeleteEmail(account *config.Account, uid uint32) error {
+	c, err := connect(account)
 	if err != nil {
 		return err
 	}
@@ -434,13 +429,13 @@ func DeleteEmail(cfg *config.Config, uid uint32) error {
 	return c.Expunge(nil)
 }
 
-func ArchiveEmail(cfg *config.Config, uid uint32) error {
+func ArchiveEmail(account *config.Account, uid uint32) error {
 	var archiveMailbox string
-	switch cfg.ServiceProvider {
+	switch account.ServiceProvider {
 	case "gmail":
 		archiveMailbox = "[Gmail]/All Mail"
 	default:
 		archiveMailbox = "Archive"
 	}
-	return moveEmail(cfg, uid, archiveMailbox)
+	return moveEmail(account, uid, archiveMailbox)
 }

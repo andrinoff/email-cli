@@ -404,6 +404,15 @@ main {
     margin-bottom: 1.5rem;
 }
 
+.tui-ascii-logo {
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.2;
+    margin: 0 0 1.5rem 0;
+    white-space: pre;
+}
+
 .tui-prompt {
     color: var(--text-secondary);
     font-size: 0.95rem;
@@ -424,7 +433,7 @@ main {
 }
 
 .tui-cursor {
-    color: #ff79c6;
+    color: var(--accent-primary);
     font-weight: 700;
 }
 
@@ -438,7 +447,7 @@ main {
 }
 
 .tui-option.selected {
-    color: #ff79c6;
+    color: var(--accent-primary);
 }
 
 .tui-hint {
@@ -757,7 +766,15 @@ kbd {
 }
 
 .provider-icon {
-    font-size: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-primary);
+}
+
+.provider-icon svg {
+    width: 20px;
+    height: 20px;
 }
 
 /* Contact Section */
