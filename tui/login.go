@@ -1,44 +1,75 @@
 package tui
 
 import (
+	"strconv"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Login holds the state for the login form.
+// Login holds the state for the login/add account form.
 type Login struct {
 	focusIndex int
 	inputs     []textinput.Model
+	showCustom bool // Show custom server fields
+	isEditMode bool // Whether we're editing an existing account
+	accountID  string
+	width      int
+	height     int
 }
 
-// NewLogin creates a new login model.
+const (
+	inputProvider = iota
+	inputName
+	inputEmail
+	inputPassword
+	inputIMAPServer
+	inputIMAPPort
+	inputSMTPServer
+	inputSMTPPort
+	inputCount
+)
+
+// NewLogin creates a new login model for adding accounts.
 func NewLogin() *Login {
 	m := &Login{
-		inputs: make([]textinput.Model, 4), // Increased to 4 for provider, name, email, and password
+		inputs: make([]textinput.Model, inputCount),
 	}
 
 	var t textinput.Model
 	for i := range m.inputs {
 		t = textinput.New()
 		t.Cursor.Style = focusedStyle
-		t.CharLimit = 64
+		t.CharLimit = 128
 
 		switch i {
-		case 0:
-			t.Placeholder = "Provider (gmail or icloud)"
+		case inputProvider:
+			t.Placeholder = "Provider (gmail, icloud, or custom)"
 			t.Focus()
 			t.Prompt = "☁️ > "
-		case 1:
-			t.Placeholder = "Name"
+		case inputName:
+			t.Placeholder = "Display Name"
 			t.Prompt = "👤 > "
-		case 2:
-			t.Placeholder = "Email"
+		case inputEmail:
+			t.Placeholder = "Email Address"
 			t.Prompt = "✉️ > "
-		case 3:
-			t.Placeholder = "Password"
+		case inputPassword:
+			t.Placeholder = "Password / App Password"
 			t.EchoMode = textinput.EchoPassword
 			t.Prompt = "🔑 > "
+		case inputIMAPServer:
+			t.Placeholder = "IMAP Server (e.g., imap.example.com)"
+			t.Prompt = "📥 > "
+		case inputIMAPPort:
+			t.Placeholder = "IMAP Port (default: 993)"
+			t.Prompt = "🔢 > "
+		case inputSMTPServer:
+			t.Placeholder = "SMTP Server (e.g., smtp.example.com)"
+			t.Prompt = "📤 > "
+		case inputSMTPPort:
+			t.Placeholder = "SMTP Port (default: 587)"
+			t.Prompt = "🔢 > "
 		}
 		m.inputs[i] = t
 	}
@@ -55,39 +86,92 @@ func (m *Login) Init() tea.Cmd {
 func (m *Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// When the window is resized, update the width of the inputs.
+		m.width = msg.Width
+		m.height = msg.Height
 		for i := range m.inputs {
-			m.inputs[i].Width = msg.Width - 6 // Subtract for padding and prompt
+			m.inputs[i].Width = msg.Width - 6
 		}
 
 	case tea.KeyMsg:
 		switch msg.Type {
-		// On Enter, if we are on the last field, submit the credentials.
+		case tea.KeyEsc:
+			return m, func() tea.Msg { return GoToChoiceMenuMsg{} }
+
 		case tea.KeyEnter:
-			if m.focusIndex == len(m.inputs)-1 {
+			// Check if provider is "custom" to show/hide custom fields
+			provider := m.inputs[inputProvider].Value()
+			if provider == "custom" {
+				m.showCustom = true
+			} else {
+				m.showCustom = false
+			}
+
+			lastFieldIndex := inputPassword
+			if m.showCustom {
+				lastFieldIndex = inputSMTPPort
+			}
+
+			if m.focusIndex == lastFieldIndex {
+				// Submit the form
+				imapPort := 993
+				smtpPort := 587
+				if m.inputs[inputIMAPPort].Value() != "" {
+					if p, err := strconv.Atoi(m.inputs[inputIMAPPort].Value()); err == nil {
+						imapPort = p
+					}
+				}
+				if m.inputs[inputSMTPPort].Value() != "" {
+					if p, err := strconv.Atoi(m.inputs[inputSMTPPort].Value()); err == nil {
+						smtpPort = p
+					}
+				}
+
 				return m, func() tea.Msg {
 					return Credentials{
-						Provider: m.inputs[0].Value(),
-						Name:     m.inputs[1].Value(),
-						Email:    m.inputs[2].Value(),
-						Password: m.inputs[3].Value(),
+						Provider:   m.inputs[inputProvider].Value(),
+						Name:       m.inputs[inputName].Value(),
+						Email:      m.inputs[inputEmail].Value(),
+						Password:   m.inputs[inputPassword].Value(),
+						IMAPServer: m.inputs[inputIMAPServer].Value(),
+						IMAPPort:   imapPort,
+						SMTPServer: m.inputs[inputSMTPServer].Value(),
+						SMTPPort:   smtpPort,
 					}
 				}
 			}
 			fallthrough
-		// Cycle focus between inputs.
+
 		case tea.KeyTab, tea.KeyShiftTab, tea.KeyUp, tea.KeyDown:
 			s := msg.String()
+
+			// Check provider to update showCustom
+			provider := m.inputs[inputProvider].Value()
+			m.showCustom = provider == "custom"
+
+			maxIndex := inputPassword
+			if m.showCustom {
+				maxIndex = inputSMTPPort
+			}
+
 			if s == "up" || s == "shift+tab" {
 				m.focusIndex--
 			} else {
 				m.focusIndex++
 			}
 
-			if m.focusIndex >= len(m.inputs) {
+			if m.focusIndex > maxIndex {
 				m.focusIndex = 0
 			} else if m.focusIndex < 0 {
-				m.focusIndex = len(m.inputs) - 1
+				m.focusIndex = maxIndex
+			}
+
+			// Skip custom fields if not showing them
+			if !m.showCustom && m.focusIndex > inputPassword {
+				if s == "up" || s == "shift+tab" {
+					m.focusIndex = inputPassword
+				} else {
+					m.focusIndex = 0
+				}
 			}
 
 			cmds := make([]tea.Cmd, len(m.inputs))
@@ -102,23 +186,84 @@ func (m *Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Update the focused input field.
+	// Update the focused input field
 	var cmds = make([]tea.Cmd, len(m.inputs))
 	for i := range m.inputs {
 		m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
 	}
+
+	// Check if provider changed
+	provider := m.inputs[inputProvider].Value()
+	m.showCustom = provider == "custom"
+
 	return m, tea.Batch(cmds...)
 }
 
 // View renders the login form.
 func (m *Login) View() string {
-	return lipgloss.JoinVertical(lipgloss.Left,
-		titleStyle.Render("Account Settings"),
-		"Update your credentials.",
-		m.inputs[0].View(),
-		m.inputs[1].View(),
-		m.inputs[2].View(),
-		m.inputs[3].View(),
-		helpStyle.Render("\nenter: save • tab: next field • esc: back to menu"),
-	)
+	title := "Add Account"
+	if m.isEditMode {
+		title = "Edit Account"
+	}
+
+	customHint := ""
+	if m.inputs[inputProvider].Value() == "custom" || m.showCustom {
+		customHint = "\n" + accountEmailStyle.Render("Custom provider selected - configure server settings below")
+	}
+
+	views := []string{
+		titleStyle.Render(title),
+		"Enter your email account credentials.",
+		customHint,
+		m.inputs[inputProvider].View(),
+		m.inputs[inputName].View(),
+		m.inputs[inputEmail].View(),
+		m.inputs[inputPassword].View(),
+	}
+
+	if m.showCustom {
+		views = append(views,
+			"",
+			listHeader.Render("Custom Server Settings:"),
+			m.inputs[inputIMAPServer].View(),
+			m.inputs[inputIMAPPort].View(),
+			m.inputs[inputSMTPServer].View(),
+			m.inputs[inputSMTPPort].View(),
+		)
+	}
+
+	views = append(views, helpStyle.Render("\nenter: save • tab: next field • esc: back to menu"))
+
+	return lipgloss.JoinVertical(lipgloss.Left, views...)
+}
+
+// SetEditMode sets the login form to edit an existing account.
+func (m *Login) SetEditMode(accountID, provider, name, email, imapServer string, imapPort int, smtpServer string, smtpPort int) {
+	m.isEditMode = true
+	m.accountID = accountID
+	m.inputs[inputProvider].SetValue(provider)
+	m.inputs[inputName].SetValue(name)
+	m.inputs[inputEmail].SetValue(email)
+	m.showCustom = provider == "custom"
+
+	if m.showCustom {
+		m.inputs[inputIMAPServer].SetValue(imapServer)
+		if imapPort != 0 {
+			m.inputs[inputIMAPPort].SetValue(strconv.Itoa(imapPort))
+		}
+		m.inputs[inputSMTPServer].SetValue(smtpServer)
+		if smtpPort != 0 {
+			m.inputs[inputSMTPPort].SetValue(strconv.Itoa(smtpPort))
+		}
+	}
+}
+
+// GetAccountID returns the account ID being edited (if in edit mode).
+func (m *Login) GetAccountID() string {
+	return m.accountID
+}
+
+// IsEditMode returns whether the form is in edit mode.
+func (m *Login) IsEditMode() bool {
+	return m.isEditMode
 }

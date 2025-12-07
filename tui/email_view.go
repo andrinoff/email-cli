@@ -22,6 +22,7 @@ type EmailView struct {
 	emailIndex         int
 	attachmentCursor   int
 	focusOnAttachments bool
+	accountID          string
 }
 
 func NewEmailView(email fetcher.Email, emailIndex, width, height int) *EmailView {
@@ -46,6 +47,7 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int) *EmailView
 		viewport:   vp,
 		email:      email,
 		emailIndex: emailIndex,
+		accountID:  email.AccountID,
 	}
 }
 
@@ -82,12 +84,14 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(m.email.Attachments) > 0 {
 					selected := m.email.Attachments[m.attachmentCursor]
 					idx := m.emailIndex
+					accountID := m.accountID
 					return m, func() tea.Msg {
 						return DownloadAttachmentMsg{
-							Index:    idx,
-							Filename: selected.Filename,
-							PartID:   selected.PartID,
-							Data:     selected.Data,
+							Index:     idx,
+							Filename:  selected.Filename,
+							PartID:    selected.PartID,
+							Data:      selected.Data,
+							AccountID: accountID,
 						}
 					}
 				}
@@ -98,6 +102,18 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "r":
 				return m, func() tea.Msg { return ReplyToEmailMsg{Email: m.email} }
+			case "d":
+				accountID := m.accountID
+				uid := m.email.UID
+				return m, func() tea.Msg {
+					return DeleteEmailMsg{UID: uid, AccountID: accountID}
+				}
+			case "a":
+				accountID := m.accountID
+				uid := m.email.UID
+				return m, func() tea.Msg {
+					return ArchiveEmailMsg{UID: uid, AccountID: accountID}
+				}
 			case "tab":
 				if len(m.email.Attachments) > 0 {
 					m.focusOnAttachments = true
@@ -129,7 +145,7 @@ func (m *EmailView) View() string {
 	if m.focusOnAttachments {
 		help = helpStyle.Render("↑/↓: navigate • enter: download • esc/tab: back to email body")
 	} else {
-		help = helpStyle.Render("r: reply • tab: focus attachments • esc: back to inbox")
+		help = helpStyle.Render("r: reply • d: delete • a: archive • tab: focus attachments • esc: back to inbox")
 	}
 
 	var attachmentView string
@@ -150,4 +166,14 @@ func (m *EmailView) View() string {
 	}
 
 	return fmt.Sprintf("%s\n%s\n%s\n%s", styledHeader, m.viewport.View(), attachmentView, help)
+}
+
+// GetAccountID returns the account ID for this email
+func (m *EmailView) GetAccountID() string {
+	return m.accountID
+}
+
+// GetEmail returns the email being viewed
+func (m *EmailView) GetEmail() fetcher.Email {
+	return m.email
 }

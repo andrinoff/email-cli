@@ -18,12 +18,23 @@ func TestFetchEmails(t *testing.T) {
 		t.Skipf("Skipping TestFetchEmails: could not load config: %v", err)
 	}
 
+	// Check if there are any accounts configured
+	if !cfg.HasAccounts() {
+		t.Skip("Skipping TestFetchEmails: no accounts configured.")
+	}
+
+	// Get the first account
+	account := cfg.GetFirstAccount()
+	if account == nil {
+		t.Skip("Skipping TestFetchEmails: no accounts available.")
+	}
+
 	// If the password is a placeholder, skip the test to avoid failed auth attempts.
-	if cfg.Password == "" || cfg.Password == "supersecret" {
+	if account.Password == "" || account.Password == "supersecret" {
 		t.Skip("Skipping TestFetchEmails: placeholder or empty password found in config.")
 	}
 
-	emails, err := FetchEmails(cfg, 10, 10)
+	emails, err := FetchEmails(account, 10, 10)
 	if err != nil {
 		t.Fatalf("FetchEmails() failed with error: %v", err)
 	}
@@ -55,4 +66,49 @@ func TestFetchEmails(t *testing.T) {
 			t.Errorf("Fetched email has empty subject and from fields: %+v", email)
 		}
 	}
+
+	// Verify that AccountID is set on fetched emails
+	for _, email := range emails {
+		if email.AccountID != account.ID {
+			t.Errorf("Expected AccountID %s, got %s", account.ID, email.AccountID)
+		}
+	}
+}
+
+// TestFetchEmailsWithCustomServer tests fetching with a custom server configuration.
+// This test is skipped unless a custom account is configured.
+func TestFetchEmailsWithCustomServer(t *testing.T) {
+	// Attempt to load the configuration.
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		t.Skipf("Skipping TestFetchEmailsWithCustomServer: could not load config: %v", err)
+	}
+
+	// Look for a custom account
+	var customAccount *config.Account
+	for i := range cfg.Accounts {
+		if cfg.Accounts[i].ServiceProvider == "custom" {
+			customAccount = &cfg.Accounts[i]
+			break
+		}
+	}
+
+	if customAccount == nil {
+		t.Skip("Skipping TestFetchEmailsWithCustomServer: no custom account configured.")
+	}
+
+	if customAccount.Password == "" || customAccount.Password == "supersecret" {
+		t.Skip("Skipping TestFetchEmailsWithCustomServer: placeholder or empty password found.")
+	}
+
+	if customAccount.IMAPServer == "" {
+		t.Skip("Skipping TestFetchEmailsWithCustomServer: no IMAP server configured.")
+	}
+
+	emails, err := FetchEmails(customAccount, 5, 0)
+	if err != nil {
+		t.Fatalf("FetchEmails() with custom server failed: %v", err)
+	}
+
+	t.Logf("Fetched %d emails from custom server %s", len(emails), customAccount.IMAPServer)
 }

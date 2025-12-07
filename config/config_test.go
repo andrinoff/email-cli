@@ -14,12 +14,28 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	// This ensures that our config file is written to a predictable, temporary location.
 	t.Setenv("HOME", tempDir)
 
-	// Define a sample configuration to save.
+	// Define a sample configuration to save with multiple accounts.
 	expectedConfig := &Config{
-		ServiceProvider: "gmail",
-		Email:           "test@example.com",
-		Password:        "supersecret",
-		Name:            "Test User",
+		Accounts: []Account{
+			{
+				ID:              "test-id-1",
+				Name:            "Test User",
+				Email:           "test@example.com",
+				Password:        "supersecret",
+				ServiceProvider: "gmail",
+			},
+			{
+				ID:              "test-id-2",
+				Name:            "Custom User",
+				Email:           "custom@example.com",
+				Password:        "customsecret",
+				ServiceProvider: "custom",
+				IMAPServer:      "imap.custom.com",
+				IMAPPort:        993,
+				SMTPServer:      "smtp.custom.com",
+				SMTPPort:        587,
+			},
+		},
 	}
 
 	// Attempt to save the configuration.
@@ -41,26 +57,184 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	}
 }
 
-// TestIMAPServer tests the logic that determines the IMAP server address.
-func TestIMAPServer(t *testing.T) {
+// TestAccountGetIMAPServer tests the logic that determines the IMAP server address.
+func TestAccountGetIMAPServer(t *testing.T) {
 	testCases := []struct {
-		name     string
-		provider string
-		want     string
+		name    string
+		account Account
+		want    string
 	}{
-		{"Gmail", "gmail", "imap.gmail.com"},
-		{"iCloud", "icloud", "imap.mail.me.com"},
-		{"Unsupported", "yahoo", ""},
-		{"Empty", "", ""},
+		{"Gmail", Account{ServiceProvider: "gmail"}, "imap.gmail.com"},
+		{"iCloud", Account{ServiceProvider: "icloud"}, "imap.mail.me.com"},
+		{"Custom", Account{ServiceProvider: "custom", IMAPServer: "imap.custom.com"}, "imap.custom.com"},
+		{"Unsupported", Account{ServiceProvider: "yahoo"}, ""},
+		{"Empty", Account{ServiceProvider: ""}, ""},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := &Config{ServiceProvider: tc.provider}
-			got := cfg.IMAPServer()
+			got := tc.account.GetIMAPServer()
 			if got != tc.want {
-				t.Errorf("IMAPServer() = %q, want %q", got, tc.want)
+				t.Errorf("GetIMAPServer() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestAccountGetSMTPServer tests the logic that determines the SMTP server address.
+func TestAccountGetSMTPServer(t *testing.T) {
+	testCases := []struct {
+		name    string
+		account Account
+		want    string
+	}{
+		{"Gmail", Account{ServiceProvider: "gmail"}, "smtp.gmail.com"},
+		{"iCloud", Account{ServiceProvider: "icloud"}, "smtp.mail.me.com"},
+		{"Custom", Account{ServiceProvider: "custom", SMTPServer: "smtp.custom.com"}, "smtp.custom.com"},
+		{"Unsupported", Account{ServiceProvider: "yahoo"}, ""},
+		{"Empty", Account{ServiceProvider: ""}, ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.account.GetSMTPServer()
+			if got != tc.want {
+				t.Errorf("GetSMTPServer() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestConfigAddRemoveAccount tests adding and removing accounts from config.
+func TestConfigAddRemoveAccount(t *testing.T) {
+	cfg := &Config{}
+
+	// Add an account
+	account := Account{
+		Name:            "Test",
+		Email:           "test@example.com",
+		ServiceProvider: "gmail",
+	}
+	cfg.AddAccount(account)
+
+	if len(cfg.Accounts) != 1 {
+		t.Fatalf("Expected 1 account, got %d", len(cfg.Accounts))
+	}
+
+	// Check that ID was auto-generated
+	if cfg.Accounts[0].ID == "" {
+		t.Error("Expected account ID to be auto-generated")
+	}
+
+	// Remove the account
+	accountID := cfg.Accounts[0].ID
+	removed := cfg.RemoveAccount(accountID)
+	if !removed {
+		t.Error("RemoveAccount should return true when account exists")
+	}
+
+	if len(cfg.Accounts) != 0 {
+		t.Fatalf("Expected 0 accounts after removal, got %d", len(cfg.Accounts))
+	}
+
+	// Try to remove non-existent account
+	removed = cfg.RemoveAccount("non-existent")
+	if removed {
+		t.Error("RemoveAccount should return false for non-existent account")
+	}
+}
+
+// TestConfigGetAccountByID tests retrieving accounts by ID.
+func TestConfigGetAccountByID(t *testing.T) {
+	cfg := &Config{
+		Accounts: []Account{
+			{ID: "id-1", Email: "test1@example.com"},
+			{ID: "id-2", Email: "test2@example.com"},
+		},
+	}
+
+	account := cfg.GetAccountByID("id-1")
+	if account == nil {
+		t.Fatal("Expected to find account with id-1")
+	}
+	if account.Email != "test1@example.com" {
+		t.Errorf("Expected email test1@example.com, got %s", account.Email)
+	}
+
+	// Non-existent ID
+	account = cfg.GetAccountByID("non-existent")
+	if account != nil {
+		t.Error("Expected nil for non-existent account ID")
+	}
+}
+
+// TestConfigGetAccountByEmail tests retrieving accounts by email.
+func TestConfigGetAccountByEmail(t *testing.T) {
+	cfg := &Config{
+		Accounts: []Account{
+			{ID: "id-1", Email: "test1@example.com"},
+			{ID: "id-2", Email: "test2@example.com"},
+		},
+	}
+
+	account := cfg.GetAccountByEmail("test2@example.com")
+	if account == nil {
+		t.Fatal("Expected to find account with test2@example.com")
+	}
+	if account.ID != "id-2" {
+		t.Errorf("Expected ID id-2, got %s", account.ID)
+	}
+
+	// Non-existent email
+	account = cfg.GetAccountByEmail("nonexistent@example.com")
+	if account != nil {
+		t.Error("Expected nil for non-existent account email")
+	}
+}
+
+// TestConfigHasAccounts tests the HasAccounts method.
+func TestConfigHasAccounts(t *testing.T) {
+	cfg := &Config{}
+	if cfg.HasAccounts() {
+		t.Error("Expected HasAccounts to return false for empty config")
+	}
+
+	cfg.AddAccount(Account{Email: "test@example.com"})
+	if !cfg.HasAccounts() {
+		t.Error("Expected HasAccounts to return true after adding account")
+	}
+}
+
+// TestAccountGetPorts tests the port retrieval methods.
+func TestAccountGetPorts(t *testing.T) {
+	// Gmail account should use default ports
+	gmailAccount := Account{ServiceProvider: "gmail"}
+	if gmailAccount.GetIMAPPort() != 993 {
+		t.Errorf("Expected Gmail IMAP port 993, got %d", gmailAccount.GetIMAPPort())
+	}
+	if gmailAccount.GetSMTPPort() != 587 {
+		t.Errorf("Expected Gmail SMTP port 587, got %d", gmailAccount.GetSMTPPort())
+	}
+
+	// Custom account with custom ports
+	customAccount := Account{
+		ServiceProvider: "custom",
+		IMAPPort:        1993,
+		SMTPPort:        1587,
+	}
+	if customAccount.GetIMAPPort() != 1993 {
+		t.Errorf("Expected custom IMAP port 1993, got %d", customAccount.GetIMAPPort())
+	}
+	if customAccount.GetSMTPPort() != 1587 {
+		t.Errorf("Expected custom SMTP port 1587, got %d", customAccount.GetSMTPPort())
+	}
+
+	// Custom account with default ports (0 means use default)
+	customDefaultAccount := Account{ServiceProvider: "custom"}
+	if customDefaultAccount.GetIMAPPort() != 993 {
+		t.Errorf("Expected default IMAP port 993 for custom with no port, got %d", customDefaultAccount.GetIMAPPort())
+	}
+	if customDefaultAccount.GetSMTPPort() != 587 {
+		t.Errorf("Expected default SMTP port 587 for custom with no port, got %d", customDefaultAccount.GetSMTPPort())
 	}
 }

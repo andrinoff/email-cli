@@ -3,7 +3,9 @@ package tui
 import "github.com/floatpane/matcha/fetcher"
 
 type ViewEmailMsg struct {
-	Index int
+	Index     int
+	UID       uint32
+	AccountID string
 }
 
 type SendEmailMsg struct {
@@ -13,13 +15,18 @@ type SendEmailMsg struct {
 	AttachmentPath string
 	InReplyTo      string
 	References     []string
+	AccountID      string // ID of the account to send from
 }
 
 type Credentials struct {
-	Provider string
-	Name     string
-	Email    string
-	Password string
+	Provider   string
+	Name       string
+	Email      string
+	Password   string
+	IMAPServer string
+	IMAPPort   int
+	SMTPServer string
+	SMTPPort   int
 }
 
 type ChooseServiceMsg struct {
@@ -33,7 +40,8 @@ type EmailResultMsg struct {
 type ClearStatusMsg struct{}
 
 type EmailsFetchedMsg struct {
-	Emails []fetcher.Email
+	Emails    []fetcher.Email
+	AccountID string
 }
 
 type FetchErr error
@@ -49,13 +57,15 @@ type GoToSendMsg struct {
 type GoToSettingsMsg struct{}
 
 type FetchMoreEmailsMsg struct {
-	Offset uint32
+	Offset    uint32
+	AccountID string
 }
 
 type FetchingMoreEmailsMsg struct{}
 
 type EmailsAppendedMsg struct {
-	Emails []fetcher.Email
+	Emails    []fetcher.Email
+	AccountID string
 }
 
 type ReplyToEmailMsg struct {
@@ -73,25 +83,29 @@ type FileSelectedMsg struct {
 type CancelFilePickerMsg struct{}
 
 type DeleteEmailMsg struct {
-	UID uint32
+	UID       uint32
+	AccountID string
 }
 
 type ArchiveEmailMsg struct {
-	UID uint32
+	UID       uint32
+	AccountID string
 }
 
 type EmailActionDoneMsg struct {
-	UID uint32
-	Err error
+	UID       uint32
+	AccountID string
+	Err       error
 }
 
 type GoToChoiceMenuMsg struct{}
 
 type DownloadAttachmentMsg struct {
-	Index    int
-	Filename string
-	PartID   string
-	Data     []byte
+	Index     int
+	Filename  string
+	PartID    string
+	Data      []byte
+	AccountID string
 }
 
 type AttachmentDownloadedMsg struct {
@@ -114,8 +128,54 @@ type DiscardDraftMsg struct {
 type RestoreDraftMsg struct{}
 
 type EmailBodyFetchedMsg struct {
-	Index       int
+	UID         uint32
 	Body        string
 	Attachments []fetcher.Attachment
 	Err         error
+	AccountID   string
 }
+
+// --- Multi-Account Messages ---
+
+// GoToAddAccountMsg signals navigation to the add account screen.
+type GoToAddAccountMsg struct{}
+
+// AddAccountMsg signals that a new account should be added.
+type AddAccountMsg struct {
+	Credentials Credentials
+}
+
+// AccountAddedMsg signals that an account was successfully added.
+type AccountAddedMsg struct {
+	AccountID string
+	Err       error
+}
+
+// DeleteAccountMsg signals that an account should be deleted.
+type DeleteAccountMsg struct {
+	AccountID string
+}
+
+// AccountDeletedMsg signals that an account was successfully deleted.
+type AccountDeletedMsg struct {
+	AccountID string
+	Err       error
+}
+
+// SwitchAccountMsg signals switching to view a specific account's inbox.
+type SwitchAccountMsg struct {
+	AccountID string // Empty string means "ALL" accounts
+}
+
+// AllEmailsFetchedMsg signals that emails from all accounts have been fetched.
+type AllEmailsFetchedMsg struct {
+	EmailsByAccount map[string][]fetcher.Email
+}
+
+// SwitchFromAccountMsg signals changing the "From" account in composer.
+type SwitchFromAccountMsg struct {
+	AccountID string
+}
+
+// GoToAccountListMsg signals navigation to the account list in settings.
+type GoToAccountListMsg struct{}
