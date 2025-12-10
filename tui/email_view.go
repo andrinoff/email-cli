@@ -32,6 +32,7 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int) *EmailView
 		body = fmt.Sprintf("Error rendering body: %v", err)
 	}
 
+	// Create header and compute heights that reduce viewport space.
 	header := fmt.Sprintf("From: %s\nSubject: %s", email.From, email.Subject)
 	headerHeight := lipgloss.Height(header) + 2
 
@@ -40,8 +41,12 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int) *EmailView
 		attachmentHeight = len(email.Attachments) + 2
 	}
 
+	// Build viewport with initial size and set wrapped content to fit the width.
 	vp := viewport.New(width, height-headerHeight-attachmentHeight)
-	vp.SetContent(body)
+
+	// Wrap the body to the viewport width so lines don't run off-screen.
+	wrapped := wrapBodyToWidth(body, vp.Width)
+	vp.SetContent(wrapped)
 
 	return &EmailView{
 		viewport:   vp,
@@ -127,8 +132,17 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.email.Attachments) > 0 {
 			attachmentHeight = len(m.email.Attachments) + 2
 		}
+		// Update viewport dimensions
 		m.viewport.Width = msg.Width
 		m.viewport.Height = msg.Height - headerHeight - attachmentHeight
+
+		// When the window size changes, rewrap the body to the new width
+		body, err := view.ProcessBody(m.email.Body, H1Style, H2Style, BodyStyle)
+		if err != nil {
+			body = fmt.Sprintf("Error rendering body: %v", err)
+		}
+		wrapped := wrapBodyToWidth(body, m.viewport.Width)
+		m.viewport.SetContent(wrapped)
 	}
 
 	m.viewport, cmd = m.viewport.Update(msg)
@@ -171,6 +185,10 @@ func (m *EmailView) View() string {
 // GetAccountID returns the account ID for this email
 func (m *EmailView) GetAccountID() string {
 	return m.accountID
+}
+
+func wrapBodyToWidth(body string, width int) string {
+	return BodyStyle.Width(width).Render(body)
 }
 
 // GetEmail returns the email being viewed
