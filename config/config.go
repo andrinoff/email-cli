@@ -15,6 +15,9 @@ type Account struct {
 	Email           string `json:"email"`
 	Password        string `json:"password"`
 	ServiceProvider string `json:"service_provider"` // "gmail", "icloud", or "custom"
+	// FetchEmail is the single email address for which messages should be fetched.
+	// If empty, it will default to `Email` when accounts are added.
+	FetchEmail string `json:"fetch_email,omitempty"`
 
 	// Custom server settings (used when ServiceProvider is "custom")
 	IMAPServer string `json:"imap_server,omitempty"`
@@ -144,6 +147,8 @@ func LoadConfig() (*Config, error) {
 						Email:           legacyConfig.Email,
 						Password:        legacyConfig.Password,
 						ServiceProvider: legacyConfig.ServiceProvider,
+						// Default FetchEmail to the legacy Email value
+						FetchEmail: legacyConfig.Email,
 					},
 				},
 			}
@@ -170,6 +175,10 @@ type legacyConfigFormat struct {
 func (c *Config) AddAccount(account Account) {
 	if account.ID == "" {
 		account.ID = uuid.New().String()
+	}
+	// Ensure FetchEmail defaults to the login Email if not explicitly set.
+	if account.FetchEmail == "" && account.Email != "" {
+		account.FetchEmail = account.Email
 	}
 	c.Accounts = append(c.Accounts, account)
 }
