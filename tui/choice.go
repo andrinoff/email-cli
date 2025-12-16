@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -29,9 +30,12 @@ const choiceLogo = `
 `
 
 type Choice struct {
-	cursor         int
-	choices        []string
-	hasSavedDrafts bool
+	cursor          int
+	choices         []string
+	hasSavedDrafts  bool
+	UpdateAvailable bool
+	LatestVersion   string
+	CurrentVersion  string
 }
 
 func NewChoice() Choice {
@@ -42,8 +46,11 @@ func NewChoice() Choice {
 	}
 	choices = append(choices, "Settings")
 	return Choice{
-		choices:        choices,
-		hasSavedDrafts: hasSavedDrafts,
+		choices:         choices,
+		hasSavedDrafts:  hasSavedDrafts,
+		UpdateAvailable: false,
+		LatestVersion:   "",
+		CurrentVersion:  "",
 	}
 }
 
@@ -77,6 +84,28 @@ func (m Choice) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+
+	// Handle update notification from other package without importing its type directly.
+	// We look for a struct named 'UpdateAvailableMsg' that contains 'Latest' and 'Current' string fields.
+	rv := reflect.ValueOf(msg)
+	if rv.IsValid() && rv.Kind() == reflect.Struct && rv.Type().Name() == "UpdateAvailableMsg" {
+		f := rv.FieldByName("Latest")
+		c := rv.FieldByName("Current")
+		updated := false
+		if f.IsValid() && f.Kind() == reflect.String {
+			m.LatestVersion = f.String()
+			updated = true
+		}
+		if c.IsValid() && c.Kind() == reflect.String {
+			m.CurrentVersion = c.String()
+			updated = true
+		}
+		if updated {
+			m.UpdateAvailable = true
+			return m, nil
+		}
+	}
+
 	return m, nil
 }
 
@@ -87,6 +116,18 @@ func (m Choice) View() string {
 	b.WriteString("\n")
 	b.WriteString(listHeader.Render("What would you like to do?"))
 	b.WriteString("\n\n")
+
+	// If we detected an update, show a short message under the header.
+	if m.UpdateAvailable {
+		updateStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Padding(0, 1)
+		cur := m.CurrentVersion
+		if cur == "" {
+			cur = "unknown"
+		}
+		msg := fmt.Sprintf("Update available: %s (installed: %s) — run `matcha update` to upgrade", m.LatestVersion, cur)
+		b.WriteString(updateStyle.Render(msg))
+		b.WriteString("\n\n")
+	}
 
 	for i, choice := range m.choices {
 		if m.cursor == i {

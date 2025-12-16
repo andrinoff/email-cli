@@ -1,10 +1,15 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +33,29 @@ const (
 	initialEmailLimit = 20
 	paginationLimit   = 20
 )
+
+// Version variables are injected by the build (GoReleaser ldflags).
+// They default to "dev" when not set by the build system.
+var (
+	version = "dev"
+	commit  = ""
+	date    = ""
+)
+
+// UpdateAvailableMsg is sent into the TUI when a newer release is detected.
+type UpdateAvailableMsg struct {
+	Latest  string
+	Current string
+}
+
+// internal struct for parsing GitHub release JSON.
+type githubRelease struct {
+	TagName string `json:"tag_name"`
+	Assets  []struct {
+		Name               string `json:"name"`
+		BrowserDownloadURL string `json:"browser_download_url"`
+	} `json:"assets"`
+}
 
 type mainModel struct {
 	current       tea.Model
@@ -56,7 +84,7 @@ func newInitialModel(cfg *config.Config) *mainModel {
 }
 
 func (m *mainModel) Init() tea.Cmd {
-	return m.current.Init()
+	return tea.Batch(m.current.Init(), checkForUpdatesCmd())
 }
 
 func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -963,7 +991,302 @@ func downloadAttachmentCmd(account *config.Account, uid uint32, msg tui.Download
 	}
 }
 
+/*
+detectInstalledVersion returns a best-effort installed version string.
+Priority:
+ 1. If the build-in `version` variable is set to something other than "dev", return it.
+ 2. If Homebrew is present and reports a version for `matcha`, return that.
+ 3. If snap is present and lists `matcha`, return that.
+ 4. Fallback to the build `version` (likely "dev").
+*/
+func detectInstalledVersion() string {
+	v := strings.TrimSpace(version)
+	if v != "dev" && v != "" {
+		return v
+	}
+
+	// Try Homebrew (macOS)
+	if runtime.GOOS == "darwin" {
+		if _, err := exec.LookPath("brew"); err == nil {
+			// `brew list --versions matcha` prints: matcha 1.2.3
+			if out, err := exec.Command("brew", "list", "--versions", "matcha").Output(); err == nil {
+				parts := strings.Fields(string(out))
+				if len(parts) >= 2 {
+					return parts[1]
+				}
+			}
+		}
+	}
+
+	// Try snap (Linux)
+	if runtime.GOOS == "linux" {
+		if _, err := exec.LookPath("snap"); err == nil {
+			if out, err := exec.Command("snap", "list", "matcha").Output(); err == nil {
+				lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+				if len(lines) >= 2 {
+					fields := strings.Fields(lines[1])
+					if len(fields) >= 2 {
+						return fields[1]
+					}
+				}
+			}
+		}
+	}
+
+	return v
+}
+
+/*
+checkForUpdatesCmd queries GitHub for the latest release tag and returns a
+tea.Msg (UpdateAvailableMsg) if the latest version differs from the current
+installed version. This runs in the background when the TUI initializes.
+*/
+func checkForUpdatesCmd() tea.Cmd {
+	return func() tea.Msg {
+		// Non-fatal: if anything goes wrong we just don't show the update message.
+		const api = "https://api.github.com/repos/floatpane/matcha/releases/latest"
+		resp, err := http.Get(api)
+		if err != nil {
+			return nil
+		}
+		defer resp.Body.Close()
+
+		var rel githubRelease
+		if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+			return nil
+		}
+
+		latest := strings.TrimPrefix(rel.TagName, "v")
+		installed := strings.TrimPrefix(detectInstalledVersion(), "v")
+		if latest != "" && installed != "" && latest != installed {
+			return UpdateAvailableMsg{Latest: latest, Current: installed}
+		}
+		return nil
+	}
+}
+
+// runUpdateCLI implements the CLI entrypoint for `matcha update`.
+// It detects the likely installation method and attempts the appropriate
+// update path (Homebrew, Snap, or GitHub release binary extract).
+func runUpdateCLI() error {
+	const api = "https://api.github.com/repos/floatpane/matcha/releases/latest"
+	resp, err := http.Get(api)
+	if err != nil {
+		return fmt.Errorf("could not query releases: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var rel githubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		return fmt.Errorf("could not parse release info: %w", err)
+	}
+
+	latestTag := rel.TagName
+	if strings.HasPrefix(latestTag, "v") {
+		latestTag = latestTag[1:]
+	}
+
+	fmt.Printf("Current version: %s\n", version)
+	fmt.Printf("Latest version: %s\n", latestTag)
+
+	// Quick check: if already up-to-date, exit
+	cur := version
+	if strings.HasPrefix(cur, "v") {
+		cur = cur[1:]
+	}
+	if latestTag == "" || cur == latestTag {
+		fmt.Println("Already up to date.")
+		return nil
+	}
+
+	// Detect Homebrew
+	if _, err := exec.LookPath("brew"); err == nil {
+		fmt.Println("Detected Homebrew — attempting to upgrade via brew.")
+		cmd := exec.Command("brew", "upgrade", "matcha")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err == nil {
+			fmt.Println("Successfully upgraded via Homebrew.")
+			return nil
+		}
+		fmt.Printf("Homebrew upgrade failed: %v\n", err)
+		// fallthrough to other methods
+	}
+
+	// Detect snap
+	if _, err := exec.LookPath("snap"); err == nil {
+		// Check if matcha is installed as a snap
+		cmdCheck := exec.Command("snap", "list", "matcha")
+		if err := cmdCheck.Run(); err == nil {
+			fmt.Println("Detected Snap package — attempting to refresh.")
+			cmd := exec.Command("snap", "refresh", "matcha")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err == nil {
+				fmt.Println("Successfully refreshed snap.")
+				return nil
+			}
+			fmt.Printf("Snap refresh failed: %v\n", err)
+			// fallthrough
+		}
+	}
+
+	// Otherwise attempt to download the proper release asset and replace the binary.
+	osName := runtime.GOOS
+	arch := runtime.GOARCH
+
+	// Try to find a matching asset
+	var assetURL, assetName string
+	for _, a := range rel.Assets {
+		n := strings.ToLower(a.Name)
+		if strings.Contains(n, osName) && strings.Contains(n, arch) && (strings.HasSuffix(n, ".tar.gz") || strings.HasSuffix(n, ".tgz") || strings.HasSuffix(n, ".zip")) {
+			assetURL = a.BrowserDownloadURL
+			assetName = a.Name
+			break
+		}
+	}
+	if assetURL == "" {
+		// Try any asset that contains 'matcha' and os/arch as a fallback
+		for _, a := range rel.Assets {
+			n := strings.ToLower(a.Name)
+			if strings.Contains(n, "matcha") && (strings.Contains(n, osName) || strings.Contains(n, arch)) {
+				assetURL = a.BrowserDownloadURL
+				assetName = a.Name
+				break
+			}
+		}
+	}
+
+	if assetURL == "" {
+		return fmt.Errorf("no suitable release artifact found for %s/%s", osName, arch)
+	}
+
+	fmt.Printf("Found release asset: %s\n", assetName)
+	fmt.Println("Downloading...")
+
+	// Download asset
+	respAsset, err := http.Get(assetURL)
+	if err != nil {
+		return fmt.Errorf("download failed: %w", err)
+	}
+	defer respAsset.Body.Close()
+
+	// Create a temp file for the download
+	tmpDir, err := os.MkdirTemp("", "matcha-update-*")
+	if err != nil {
+		return fmt.Errorf("could not create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	assetPath := filepath.Join(tmpDir, assetName)
+	outFile, err := os.Create(assetPath)
+	if err != nil {
+		return fmt.Errorf("could not create temp file: %w", err)
+	}
+	_, err = io.Copy(outFile, respAsset.Body)
+	outFile.Close()
+	if err != nil {
+		return fmt.Errorf("could not write asset to disk: %w", err)
+	}
+
+	// If it's a tar.gz, extract and find the `matcha` binary
+	var binPath string
+	if strings.HasSuffix(assetName, ".tar.gz") || strings.HasSuffix(assetName, ".tgz") {
+		f, err := os.Open(assetPath)
+		if err != nil {
+			return fmt.Errorf("could not open archive: %w", err)
+		}
+		defer f.Close()
+		gzr, err := gzip.NewReader(f)
+		if err != nil {
+			return fmt.Errorf("could not create gzip reader: %w", err)
+		}
+		tr := tar.NewReader(gzr)
+		for {
+			hdr, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("error reading tar: %w", err)
+			}
+			name := filepath.Base(hdr.Name)
+			if name == "matcha" || strings.Contains(strings.ToLower(name), "matcha") && (hdr.Typeflag == tar.TypeReg) {
+				// write out the file
+				binPath = filepath.Join(tmpDir, "matcha")
+				out, err := os.Create(binPath)
+				if err != nil {
+					return fmt.Errorf("could not create binary file: %w", err)
+				}
+				if _, err := io.Copy(out, tr); err != nil {
+					out.Close()
+					return fmt.Errorf("could not extract binary: %w", err)
+				}
+				out.Close()
+				if err := os.Chmod(binPath, 0755); err != nil {
+					return fmt.Errorf("could not make binary executable: %w", err)
+				}
+				break
+			}
+		}
+	} else {
+		// For non-archive assets, assume the asset is the binary itself.
+		binPath = assetPath
+		if err := os.Chmod(binPath, 0755); err != nil {
+			// ignore chmod errors but warn
+			fmt.Printf("warning: could not chmod downloaded binary: %v\n", err)
+		}
+	}
+
+	if binPath == "" {
+		return fmt.Errorf("could not locate matcha binary inside the release artifact")
+	}
+
+	// Replace the running executable with the new binary
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("could not determine executable path: %w", err)
+	}
+
+	// Write the new binary to a temp file in same dir, then rename for atomic replacement.
+	execDir := filepath.Dir(execPath)
+	tmpNew := filepath.Join(execDir, fmt.Sprintf("matcha.new.%d", time.Now().Unix()))
+	in, err := os.Open(binPath)
+	if err != nil {
+		return fmt.Errorf("could not open new binary: %w", err)
+	}
+	out, err := os.OpenFile(tmpNew, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		in.Close()
+		return fmt.Errorf("could not create temp binary in target dir: %w", err)
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		in.Close()
+		out.Close()
+		return fmt.Errorf("could not write new binary to disk: %w", err)
+	}
+	in.Close()
+	out.Close()
+
+	// Attempt to atomically replace
+	if err := os.Rename(tmpNew, execPath); err != nil {
+		return fmt.Errorf("could not replace executable: %w", err)
+	}
+
+	fmt.Println("Successfully updated matcha to", latestTag)
+	return nil
+}
+
 func main() {
+	// If invoked as CLI update command, run updater and exit.
+	if len(os.Args) > 1 && os.Args[1] == "update" {
+		if err := runUpdateCLI(); err != nil {
+			fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	cfg, err := config.LoadConfig()
 	var initialModel *mainModel
 	if err != nil {
