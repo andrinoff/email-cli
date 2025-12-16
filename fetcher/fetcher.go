@@ -164,8 +164,32 @@ func FetchEmails(account *config.Account, limit, offset uint32) ([]Email, error)
 		}
 
 		var toAddrList []string
+		// Build recipient list from To and Cc for matching and display
 		for _, addr := range msg.Envelope.To {
 			toAddrList = append(toAddrList, addr.Address())
+		}
+		for _, addr := range msg.Envelope.Cc {
+			toAddrList = append(toAddrList, addr.Address())
+		}
+
+		// Determine which email to filter on: prefer Account.FetchEmail, fallback to Account.Email
+		fetchEmail := strings.ToLower(strings.TrimSpace(account.FetchEmail))
+		if fetchEmail == "" {
+			fetchEmail = strings.ToLower(strings.TrimSpace(account.Email))
+		}
+
+		// Check if any recipient matches the fetchEmail
+		matched := false
+		for _, r := range toAddrList {
+			if strings.EqualFold(strings.TrimSpace(r), fetchEmail) {
+				matched = true
+				break
+			}
+		}
+
+		if !matched {
+			// Skip messages not addressed to the configured fetch email
+			continue
 		}
 
 		emails = append(emails, Email{

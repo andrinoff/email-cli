@@ -23,6 +23,7 @@ const (
 	inputProvider = iota
 	inputName
 	inputEmail
+	inputFetchEmail
 	inputPassword
 	inputIMAPServer
 	inputIMAPPort
@@ -52,6 +53,9 @@ func NewLogin() *Login {
 			t.Placeholder = "Display Name"
 			t.Prompt = "👤 > "
 		case inputEmail:
+			t.Placeholder = "Host"
+			t.Prompt = "🏠 > "
+		case inputFetchEmail:
 			t.Placeholder = "Email Address"
 			t.Prompt = "✉️ > "
 		case inputPassword:
@@ -130,7 +134,8 @@ func (m *Login) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return Credentials{
 						Provider:   m.inputs[inputProvider].Value(),
 						Name:       m.inputs[inputName].Value(),
-						Email:      m.inputs[inputEmail].Value(),
+						Host:       m.inputs[inputEmail].Value(),
+						FetchEmail: m.inputs[inputFetchEmail].Value(),
 						Password:   m.inputs[inputPassword].Value(),
 						IMAPServer: m.inputs[inputIMAPServer].Value(),
 						IMAPPort:   imapPort,
@@ -218,6 +223,7 @@ func (m *Login) View() string {
 		m.inputs[inputProvider].View(),
 		m.inputs[inputName].View(),
 		m.inputs[inputEmail].View(),
+		m.inputs[inputFetchEmail].View(),
 		m.inputs[inputPassword].View(),
 	}
 
@@ -238,12 +244,13 @@ func (m *Login) View() string {
 }
 
 // SetEditMode sets the login form to edit an existing account.
-func (m *Login) SetEditMode(accountID, provider, name, email, imapServer string, imapPort int, smtpServer string, smtpPort int) {
+func (m *Login) SetEditMode(accountID, provider, name, email, fetchEmail, imapServer string, imapPort int, smtpServer string, smtpPort int) {
 	m.isEditMode = true
 	m.accountID = accountID
 	m.inputs[inputProvider].SetValue(provider)
 	m.inputs[inputName].SetValue(name)
 	m.inputs[inputEmail].SetValue(email)
+	m.inputs[inputFetchEmail].SetValue(fetchEmail)
 	m.showCustom = provider == "custom"
 
 	if m.showCustom {

@@ -24,7 +24,8 @@ type SendEmailMsg struct {
 type Credentials struct {
 	Provider   string
 	Name       string
-	Email      string
+	Host       string // Host (this was the previous \"Email Address\" field in the UI)
+	FetchEmail string // Single email address to fetch messages for. If empty, code should default this to Host when creating the account.
 	Password   string
 	IMAPServer string
 	IMAPPort   int

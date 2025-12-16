@@ -140,9 +140,10 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		account := config.Account{
 			ID:              uuid.New().String(),
 			Name:            msg.Name,
-			Email:           msg.Email,
+			Email:           msg.Host, // login/email used for authentication comes from Host field in the form
 			Password:        msg.Password,
 			ServiceProvider: msg.Provider,
+			FetchEmail:      msg.FetchEmail,
 		}
 
 		if msg.Provider == "custom" {
@@ -150,6 +151,11 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			account.IMAPPort = msg.IMAPPort
 			account.SMTPServer = msg.SMTPServer
 			account.SMTPPort = msg.SMTPPort
+		}
+
+		// Ensure FetchEmail defaults to the login Email (Host) if not explicitly set
+		if account.FetchEmail == "" && account.Email != "" {
+			account.FetchEmail = account.Email
 		}
 
 		if m.config == nil {
