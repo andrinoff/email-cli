@@ -101,9 +101,6 @@ func NewInbox(emails []fetcher.Email, accounts []config.Account) *Inbox {
 	tabs := []AccountTab{{ID: "", Label: "ALL", Email: ""}}
 	for _, acc := range accounts {
 		label := acc.Email
-		if acc.Name != "" {
-			label = acc.Name
-		}
 		tabs = append(tabs, AccountTab{ID: acc.ID, Label: label, Email: acc.Email})
 	}
 
@@ -451,9 +448,6 @@ func (m *Inbox) SetEmails(emails []fetcher.Email, accounts []config.Account) {
 	tabs := []AccountTab{{ID: "", Label: "ALL", Email: ""}}
 	for _, acc := range accounts {
 		label := acc.Email
-		if acc.Name != "" {
-			label = acc.Name
-		}
 		tabs = append(tabs, AccountTab{ID: acc.ID, Label: label, Email: acc.Email})
 	}
 	m.tabs = tabs
