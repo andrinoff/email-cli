@@ -1,7 +1,7 @@
 # This is the configuration file for GoReleaser.
 # It defines how your project should be built, packaged, and released.
 # For more information, see: https://goreleaser.com/customization/
-version: 1
+version: 2
 
 # The 'before' hook runs commands before the build process starts.
 before:
@@ -31,10 +31,11 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
 # 'archives' defines how to package the built binaries.
+# 'archives' defines how to package the built binaries.
 archives:
   - # The archive configuration.
     # This will create .tar.gz files.
-    format: tar.gz
+    formats: [tar.gz]
     # A template for the archive file names.
     # e.g., matcha_1.2.3_darwin_amd64.tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -44,13 +45,13 @@ archives:
 
       - README.md
 
+# 'snapshot' configures how test releases are named when running on non-tagged commits.
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
 # 'checksum' creates a file with SHA256 checksums for all artifacts.
 checksum:
   name_template: "checksums.txt"
-
-# 'snapshot' configures how test releases are named when running on non-tagged commits.
-snapshot:
-  name_template: "{{ .Tag }}-next"
 
 # 'changelog' configures the automatic generation of release notes.
 changelog:
@@ -76,7 +77,7 @@ brews:
     # The name of your formula file will be 'matcha.rb'.
     name: matcha
     # The GitHub repository for your Homebrew tap.
-    tap:
+    repository:
       owner: floatpane
       name: homebrew-matcha
       # The token to use for pushing to the tap repository.
