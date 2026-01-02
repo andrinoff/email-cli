@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -8,6 +9,28 @@ import (
 	"github.com/floatpane/matcha/config"
 	"github.com/floatpane/matcha/fetcher"
 )
+
+func collectMsgs(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	switch batch := msg.(type) {
+	case tea.BatchMsg:
+		var msgs []tea.Msg
+		for _, m := range batch {
+			if m != nil {
+				msgs = append(msgs, m)
+			}
+		}
+		return msgs
+	default:
+		if msg != nil {
+			return []tea.Msg{msg}
+		}
+	}
+	return nil
+}
 
 // TestInboxUpdate verifies the state transitions in the inbox view.
 func TestInboxUpdate(t *testing.T) {
@@ -246,5 +269,78 @@ func TestInboxGetEmailAtIndex(t *testing.T) {
 	email = inbox.GetEmailAtIndex(-1)
 	if email != nil {
 		t.Error("Expected nil for negative index, got non-nil")
+	}
+}
+
+func TestInboxTitleShowsCount(t *testing.T) {
+	accounts := []config.Account{
+		{ID: "account-1", Email: "test@example.com"},
+	}
+
+	emails := []fetcher.Email{
+		{UID: 1, From: "sender@example.com", Subject: "Email 1", AccountID: "account-1", Date: time.Now()},
+		{UID: 2, From: "sender@example.com", Subject: "Email 2", AccountID: "account-1", Date: time.Now().Add(-time.Minute)},
+		{UID: 3, From: "sender@example.com", Subject: "Email 3", AccountID: "account-1", Date: time.Now().Add(-2 * time.Minute)},
+	}
+
+	inbox := NewInbox(emails, accounts)
+
+	if !strings.Contains(inbox.list.Title, "Inbox (3)") {
+		t.Fatalf("expected inbox title to contain count, got %q", inbox.list.Title)
+	}
+}
+
+func TestSentInboxTitleShowsCount(t *testing.T) {
+	accounts := []config.Account{
+		{ID: "account-1", Email: "test@example.com"},
+	}
+
+	emails := []fetcher.Email{
+		{UID: 1, From: "sender@example.com", Subject: "Email 1", AccountID: "account-1", Date: time.Now()},
+		{UID: 2, From: "sender@example.com", Subject: "Email 2", AccountID: "account-1", Date: time.Now().Add(-time.Minute)},
+	}
+
+	inbox := NewSentInbox(emails, accounts)
+
+	if !strings.Contains(inbox.list.Title, "Sent (2)") {
+		t.Fatalf("expected sent title to contain count, got %q", inbox.list.Title)
+	}
+}
+
+func TestFetchMoreTriggeredAtListEnd(t *testing.T) {
+	accounts := []config.Account{
+		{ID: "account-1", Email: "test@example.com"},
+	}
+
+	emails := []fetcher.Email{
+		{UID: 1, From: "a@example.com", Subject: "Email 1", AccountID: "account-1", Date: time.Now()},
+		{UID: 2, From: "b@example.com", Subject: "Email 2", AccountID: "account-1", Date: time.Now().Add(-time.Minute)},
+	}
+
+	inbox := NewInbox(emails, accounts)
+
+	_, cmd := inbox.Update(tea.KeyMsg{Type: tea.KeyDown})
+	msgs := collectMsgs(cmd)
+
+	var fetchMsg FetchMoreEmailsMsg
+	for _, m := range msgs {
+		if msg, ok := m.(FetchMoreEmailsMsg); ok {
+			fetchMsg = msg
+			break
+		}
+	}
+
+	if fetchMsg.AccountID == "" {
+		t.Fatal("expected a FetchMoreEmailsMsg when reaching end of the list")
+	}
+
+	if fetchMsg.Offset != uint32(len(emails)) {
+		t.Fatalf("expected offset %d, got %d", len(emails), fetchMsg.Offset)
+	}
+	if fetchMsg.AccountID != "account-1" {
+		t.Fatalf("expected account ID 'account-1', got %q", fetchMsg.AccountID)
+	}
+	if fetchMsg.Mailbox != MailboxInbox {
+		t.Fatalf("expected MailboxInbox, got %s", fetchMsg.Mailbox)
 	}
 }

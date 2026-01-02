@@ -159,6 +159,8 @@ func (m *Inbox) updateList() {
 		showAccountLabel = false
 	}
 
+	m.emailsCount = len(displayEmails)
+
 	items := make([]list.Item, len(displayEmails))
 	for i, email := range displayEmails {
 		accountEmail := ""
@@ -211,21 +213,20 @@ func (m *Inbox) updateList() {
 	}
 
 	m.list = l
-	m.emailsCount = len(displayEmails)
 }
 
 func (m *Inbox) getTitle() string {
 	var title string
 	if m.currentAccountID == "" {
-		title = m.getBaseTitle() + " - All Accounts"
+		title = m.getBaseTitleWithCount() + " - All Accounts"
 	} else {
-		title = m.getBaseTitle()
+		title = m.getBaseTitleWithCount()
 		for _, acc := range m.accounts {
 			if acc.ID == m.currentAccountID {
 				if acc.Name != "" {
-					title = fmt.Sprintf("%s - %s", m.getBaseTitle(), acc.Name)
+					title = fmt.Sprintf("%s - %s", m.getBaseTitleWithCount(), acc.Name)
 				} else {
-					title = fmt.Sprintf("%s - %s", m.getBaseTitle(), acc.Email)
+					title = fmt.Sprintf("%s - %s", m.getBaseTitleWithCount(), acc.Email)
 				}
 				break
 			}
@@ -233,6 +234,9 @@ func (m *Inbox) getTitle() string {
 	}
 	if m.isRefreshing {
 		title += " (refreshing...)"
+	}
+	if m.isFetching {
+		title += " (loading more...)"
 	}
 	return title
 }
@@ -244,6 +248,10 @@ func (m *Inbox) getBaseTitle() string {
 	default:
 		return "Inbox"
 	}
+}
+
+func (m *Inbox) getBaseTitleWithCount() string {
+	return fmt.Sprintf("%s (%d)", m.getBaseTitle(), m.emailsCount)
 }
 
 func (m *Inbox) Init() tea.Cmd {
@@ -312,7 +320,7 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case FetchingMoreEmailsMsg:
 		m.isFetching = true
-		m.list.Title = "Fetching more emails..."
+		m.list.Title = m.getTitle()
 		return m, nil
 
 	case EmailsAppendedMsg:
@@ -376,23 +384,54 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if !m.isFetching && len(m.list.Items()) > 0 && m.list.Index() >= len(m.list.Items())-5 {
-		accountID := m.currentAccountID
-		offset := uint32(m.emailsCount)
-		if accountID == "" && len(m.accounts) > 0 {
-			// For "ALL" view, we'd need to fetch from all accounts
-			// For simplicity, don't auto-fetch more in ALL view
-		} else if accountID != "" {
-			cmds = append(cmds, func() tea.Msg {
-				return FetchMoreEmailsMsg{Offset: offset, AccountID: accountID, Mailbox: m.mailbox}
-			})
-		}
-	}
-
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
 	cmds = append(cmds, cmd)
+
+	if m.shouldFetchMore() {
+		cmds = append(cmds, m.fetchMoreCmds()...)
+	}
 	return m, tea.Batch(cmds...)
+}
+
+func (m *Inbox) shouldFetchMore() bool {
+	if m.isFetching {
+		return false
+	}
+	if len(m.list.Items()) == 0 {
+		return false
+	}
+	if m.list.FilterState() == list.Filtering {
+		return false
+	}
+	return m.list.Index() >= len(m.list.Items())-1
+}
+
+func (m *Inbox) fetchMoreCmds() []tea.Cmd {
+	var cmds []tea.Cmd
+	if m.currentAccountID == "" {
+		if len(m.accounts) == 0 {
+			return nil
+		}
+		for _, acc := range m.accounts {
+			accountID := acc.ID
+			offset := uint32(len(m.emailsByAccount[accountID]))
+			cmds = append(cmds, func(id string, off uint32) tea.Cmd {
+				return func() tea.Msg {
+					return FetchMoreEmailsMsg{Offset: off, AccountID: id, Mailbox: m.mailbox}
+				}
+			}(accountID, offset))
+		}
+		return cmds
+	}
+
+	offset := uint32(len(m.emailsByAccount[m.currentAccountID]))
+	cmds = append(cmds, func(id string, off uint32) tea.Cmd {
+		return func() tea.Msg {
+			return FetchMoreEmailsMsg{Offset: off, AccountID: id, Mailbox: m.mailbox}
+		}
+	}(m.currentAccountID, offset))
+	return cmds
 }
 
 func (m *Inbox) View() string {
