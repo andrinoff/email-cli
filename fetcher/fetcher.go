@@ -107,14 +107,25 @@ func connect(account *config.Account) (*client.Client, error) {
 	return c, nil
 }
 
-func FetchEmails(account *config.Account, limit, offset uint32) ([]Email, error) {
+func getSentMailbox(account *config.Account) string {
+	switch account.ServiceProvider {
+	case "gmail":
+		return "[Gmail]/Sent Mail"
+	case "icloud":
+		return "Sent Messages"
+	default:
+		return "Sent"
+	}
+}
+
+func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset uint32) ([]Email, error) {
 	c, err := connect(account)
 	if err != nil {
 		return nil, err
 	}
 	defer c.Logout()
 
-	mbox, err := c.Select("INBOX", false)
+	mbox, err := c.Select(mailbox, false)
 	if err != nil {
 		return nil, err
 	}
@@ -209,14 +220,14 @@ func FetchEmails(account *config.Account, limit, offset uint32) ([]Email, error)
 	return emails, nil
 }
 
-func FetchEmailBody(account *config.Account, uid uint32) (string, []Attachment, error) {
+func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint32) (string, []Attachment, error) {
 	c, err := connect(account)
 	if err != nil {
 		return "", nil, err
 	}
 	defer c.Logout()
 
-	if _, err := c.Select("INBOX", false); err != nil {
+	if _, err := c.Select(mailbox, false); err != nil {
 		return "", nil, err
 	}
 
@@ -374,14 +385,14 @@ func FetchEmailBody(account *config.Account, uid uint32) (string, []Attachment, 
 	return body, attachments, nil
 }
 
-func FetchAttachment(account *config.Account, uid uint32, partID string, encoding string) ([]byte, error) {
+func FetchAttachmentFromMailbox(account *config.Account, mailbox string, uid uint32, partID string, encoding string) ([]byte, error) {
 	c, err := connect(account)
 	if err != nil {
 		return nil, err
 	}
 	defer c.Logout()
 
-	if _, err := c.Select("INBOX", false); err != nil {
+	if _, err := c.Select(mailbox, false); err != nil {
 		return nil, err
 	}
 
@@ -438,14 +449,14 @@ func FetchAttachment(account *config.Account, uid uint32, partID string, encodin
 	}
 }
 
-func moveEmail(account *config.Account, uid uint32, destMailbox string) error {
+func moveEmail(account *config.Account, uid uint32, sourceMailbox, destMailbox string) error {
 	c, err := connect(account)
 	if err != nil {
 		return err
 	}
 	defer c.Logout()
 
-	if _, err := c.Select("INBOX", false); err != nil {
+	if _, err := c.Select(sourceMailbox, false); err != nil {
 		return err
 	}
 
@@ -455,14 +466,14 @@ func moveEmail(account *config.Account, uid uint32, destMailbox string) error {
 	return c.UidMove(seqSet, destMailbox)
 }
 
-func DeleteEmail(account *config.Account, uid uint32) error {
+func DeleteEmailFromMailbox(account *config.Account, mailbox string, uid uint32) error {
 	c, err := connect(account)
 	if err != nil {
 		return err
 	}
 	defer c.Logout()
 
-	if _, err := c.Select("INBOX", false); err != nil {
+	if _, err := c.Select(mailbox, false); err != nil {
 		return err
 	}
 
@@ -479,7 +490,7 @@ func DeleteEmail(account *config.Account, uid uint32) error {
 	return c.Expunge(nil)
 }
 
-func ArchiveEmail(account *config.Account, uid uint32) error {
+func ArchiveEmailFromMailbox(account *config.Account, mailbox string, uid uint32) error {
 	var archiveMailbox string
 	switch account.ServiceProvider {
 	case "gmail":
@@ -487,5 +498,47 @@ func ArchiveEmail(account *config.Account, uid uint32) error {
 	default:
 		archiveMailbox = "Archive"
 	}
-	return moveEmail(account, uid, archiveMailbox)
+	return moveEmail(account, uid, mailbox, archiveMailbox)
+}
+
+// Convenience wrappers defaulting to INBOX for existing call sites.
+
+func FetchEmails(account *config.Account, limit, offset uint32) ([]Email, error) {
+	return FetchMailboxEmails(account, "INBOX", limit, offset)
+}
+
+func FetchSentEmails(account *config.Account, limit, offset uint32) ([]Email, error) {
+	return FetchMailboxEmails(account, getSentMailbox(account), limit, offset)
+}
+
+func FetchEmailBody(account *config.Account, uid uint32) (string, []Attachment, error) {
+	return FetchEmailBodyFromMailbox(account, "INBOX", uid)
+}
+
+func FetchSentEmailBody(account *config.Account, uid uint32) (string, []Attachment, error) {
+	return FetchEmailBodyFromMailbox(account, getSentMailbox(account), uid)
+}
+
+func FetchAttachment(account *config.Account, uid uint32, partID string, encoding string) ([]byte, error) {
+	return FetchAttachmentFromMailbox(account, "INBOX", uid, partID, encoding)
+}
+
+func FetchSentAttachment(account *config.Account, uid uint32, partID string, encoding string) ([]byte, error) {
+	return FetchAttachmentFromMailbox(account, getSentMailbox(account), uid, partID, encoding)
+}
+
+func DeleteEmail(account *config.Account, uid uint32) error {
+	return DeleteEmailFromMailbox(account, "INBOX", uid)
+}
+
+func DeleteSentEmail(account *config.Account, uid uint32) error {
+	return DeleteEmailFromMailbox(account, getSentMailbox(account), uid)
+}
+
+func ArchiveEmail(account *config.Account, uid uint32) error {
+	return ArchiveEmailFromMailbox(account, "INBOX", uid)
+}
+
+func ArchiveSentEmail(account *config.Account, uid uint32) error {
+	return ArchiveEmailFromMailbox(account, getSentMailbox(account), uid)
 }

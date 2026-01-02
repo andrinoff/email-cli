@@ -94,9 +94,18 @@ type Inbox struct {
 	height           int
 	currentAccountID string // Empty means "ALL"
 	emailCountByAcct map[string]int
+	mailbox          MailboxKind
 }
 
 func NewInbox(emails []fetcher.Email, accounts []config.Account) *Inbox {
+	return NewInboxWithMailbox(emails, accounts, MailboxInbox)
+}
+
+func NewSentInbox(emails []fetcher.Email, accounts []config.Account) *Inbox {
+	return NewInboxWithMailbox(emails, accounts, MailboxSent)
+}
+
+func NewInboxWithMailbox(emails []fetcher.Email, accounts []config.Account, mailbox MailboxKind) *Inbox {
 	// Build tabs: "ALL" + one per account
 	tabs := []AccountTab{{ID: "", Label: "ALL", Email: ""}}
 	for _, acc := range accounts {
@@ -124,6 +133,7 @@ func NewInbox(emails []fetcher.Email, accounts []config.Account) *Inbox {
 		activeTabIndex:   0,
 		currentAccountID: "",
 		emailCountByAcct: emailCountByAcct,
+		mailbox:          mailbox,
 	}
 
 	inbox.updateList()
@@ -207,15 +217,15 @@ func (m *Inbox) updateList() {
 func (m *Inbox) getTitle() string {
 	var title string
 	if m.currentAccountID == "" {
-		title = "Inbox - All Accounts"
+		title = m.getBaseTitle() + " - All Accounts"
 	} else {
-		title = "Inbox"
+		title = m.getBaseTitle()
 		for _, acc := range m.accounts {
 			if acc.ID == m.currentAccountID {
 				if acc.Name != "" {
-					title = fmt.Sprintf("Inbox - %s", acc.Name)
+					title = fmt.Sprintf("%s - %s", m.getBaseTitle(), acc.Name)
 				} else {
-					title = fmt.Sprintf("Inbox - %s", acc.Email)
+					title = fmt.Sprintf("%s - %s", m.getBaseTitle(), acc.Email)
 				}
 				break
 			}
@@ -225,6 +235,15 @@ func (m *Inbox) getTitle() string {
 		title += " (refreshing...)"
 	}
 	return title
+}
+
+func (m *Inbox) getBaseTitle() string {
+	switch m.mailbox {
+	case MailboxSent:
+		return "Sent"
+	default:
+		return "Inbox"
+	}
 }
 
 func (m *Inbox) Init() tea.Cmd {
@@ -264,14 +283,14 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			selectedItem, ok := m.list.SelectedItem().(item)
 			if ok {
 				return m, func() tea.Msg {
-					return DeleteEmailMsg{UID: selectedItem.uid, AccountID: selectedItem.accountID}
+					return DeleteEmailMsg{UID: selectedItem.uid, AccountID: selectedItem.accountID, Mailbox: m.mailbox}
 				}
 			}
 		case "a":
 			selectedItem, ok := m.list.SelectedItem().(item)
 			if ok {
 				return m, func() tea.Msg {
-					return ArchiveEmailMsg{UID: selectedItem.uid, AccountID: selectedItem.accountID}
+					return ArchiveEmailMsg{UID: selectedItem.uid, AccountID: selectedItem.accountID, Mailbox: m.mailbox}
 				}
 			}
 		case "enter":
@@ -281,7 +300,7 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				uid := selectedItem.uid
 				accountID := selectedItem.accountID
 				return m, func() tea.Msg {
-					return ViewEmailMsg{Index: idx, UID: uid, AccountID: accountID}
+					return ViewEmailMsg{Index: idx, UID: uid, AccountID: accountID, Mailbox: m.mailbox}
 				}
 			}
 		}
@@ -297,6 +316,9 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case EmailsAppendedMsg:
+		if msg.Mailbox != m.mailbox {
+			return m, nil
+		}
 		m.isFetching = false
 		m.list.Title = m.getTitle()
 
@@ -311,11 +333,17 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case RefreshingEmailsMsg:
+		if msg.Mailbox != m.mailbox {
+			return m, nil
+		}
 		m.isRefreshing = true
 		m.list.Title = m.getTitle()
 		return m, nil
 
 	case EmailsRefreshedMsg:
+		if msg.Mailbox != m.mailbox {
+			return m, nil
+		}
 		m.isRefreshing = false
 
 		// Replace emails with fresh data
@@ -356,7 +384,7 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// For simplicity, don't auto-fetch more in ALL view
 		} else if accountID != "" {
 			cmds = append(cmds, func() tea.Msg {
-				return FetchMoreEmailsMsg{Offset: offset, AccountID: accountID}
+				return FetchMoreEmailsMsg{Offset: offset, AccountID: accountID, Mailbox: m.mailbox}
 			})
 		}
 	}
@@ -412,6 +440,10 @@ func (m *Inbox) GetEmailAtIndex(index int) *fetcher.Email {
 		return &displayEmails[index]
 	}
 	return nil
+}
+
+func (m *Inbox) GetMailbox() MailboxKind {
+	return m.mailbox
 }
 
 // RemoveEmail removes an email by UID and account ID

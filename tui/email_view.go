@@ -23,9 +23,10 @@ type EmailView struct {
 	attachmentCursor   int
 	focusOnAttachments bool
 	accountID          string
+	mailbox            MailboxKind
 }
 
-func NewEmailView(email fetcher.Email, emailIndex, width, height int) *EmailView {
+func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind) *EmailView {
 	// Pass the styles from the tui package to the view package
 	body, err := view.ProcessBody(email.Body, H1Style, H2Style, BodyStyle)
 	if err != nil {
@@ -53,6 +54,7 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int) *EmailView
 		email:      email,
 		emailIndex: emailIndex,
 		accountID:  email.AccountID,
+		mailbox:    mailbox,
 	}
 }
 
@@ -72,7 +74,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focusOnAttachments = false
 				return m, nil
 			}
-			return m, func() tea.Msg { return BackToInboxMsg{} }
+			return m, func() tea.Msg { return BackToMailboxMsg{Mailbox: m.mailbox} }
 		}
 
 		if m.focusOnAttachments {
@@ -97,6 +99,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							PartID:    selected.PartID,
 							Data:      selected.Data,
 							AccountID: accountID,
+							Mailbox:   m.mailbox,
 						}
 					}
 				}
@@ -111,13 +114,13 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				accountID := m.accountID
 				uid := m.email.UID
 				return m, func() tea.Msg {
-					return DeleteEmailMsg{UID: uid, AccountID: accountID}
+					return DeleteEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
 				}
 			case "a":
 				accountID := m.accountID
 				uid := m.email.UID
 				return m, func() tea.Msg {
-					return ArchiveEmailMsg{UID: uid, AccountID: accountID}
+					return ArchiveEmailMsg{UID: uid, AccountID: accountID, Mailbox: m.mailbox}
 				}
 			case "tab":
 				if len(m.email.Attachments) > 0 {
