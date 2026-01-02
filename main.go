@@ -1293,7 +1293,7 @@ func runUpdateCLI() error {
 			// continue to attempt upgrade even if update failed
 		}
 
-		upgradeCmd := exec.Command("brew", "upgrade", "matcha")
+		upgradeCmd := exec.Command("brew", "upgrade", "floatpane/matcha/matcha")
 		upgradeCmd.Stdout = os.Stdout
 		upgradeCmd.Stderr = os.Stderr
 		if err := upgradeCmd.Run(); err == nil {
