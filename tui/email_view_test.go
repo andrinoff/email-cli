@@ -28,7 +28,7 @@ func TestEmailViewUpdate(t *testing.T) {
 	}
 
 	t.Run("Focus on attachments", func(t *testing.T) {
-		emailView := NewEmailView(emailWithAttachments, 0, 80, 24)
+		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox)
 		if emailView.focusOnAttachments {
 			t.Error("focusOnAttachments should be initially false")
 		}
@@ -50,7 +50,7 @@ func TestEmailViewUpdate(t *testing.T) {
 	})
 
 	t.Run("No focus on attachments when there are none", func(t *testing.T) {
-		emailView := NewEmailView(emailWithoutAttachments, 0, 80, 24)
+		emailView := NewEmailView(emailWithoutAttachments, 0, 80, 24, MailboxInbox)
 		if emailView.focusOnAttachments {
 			t.Error("focusOnAttachments should be initially false")
 		}
@@ -63,7 +63,7 @@ func TestEmailViewUpdate(t *testing.T) {
 	})
 
 	t.Run("Navigate attachments", func(t *testing.T) {
-		emailView := NewEmailView(emailWithAttachments, 0, 80, 24)
+		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox)
 		// Focus on attachments
 		model, _ := emailView.Update(tea.KeyMsg{Type: tea.KeyTab})
 		emailView = model.(*EmailView)
@@ -95,7 +95,7 @@ func TestEmailViewUpdate(t *testing.T) {
 	})
 
 	t.Run("Download attachment", func(t *testing.T) {
-		emailView := NewEmailView(emailWithAttachments, 0, 80, 24)
+		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox)
 		// Focus on attachments
 		model, _ := emailView.Update(tea.KeyMsg{Type: tea.KeyTab})
 		emailView = model.(*EmailView)
@@ -118,10 +118,13 @@ func TestEmailViewUpdate(t *testing.T) {
 		if downloadMsg.Filename != "attachment2.txt" {
 			t.Errorf("Expected to download 'attachment2.txt', but got '%s'", downloadMsg.Filename)
 		}
+		if downloadMsg.Mailbox != MailboxInbox {
+			t.Errorf("Expected mailbox to be MailboxInbox, got %s", downloadMsg.Mailbox)
+		}
 	})
 
 	t.Run("Reply to email", func(t *testing.T) {
-		emailView := NewEmailView(emailWithAttachments, 0, 80, 24)
+		emailView := NewEmailView(emailWithAttachments, 0, 80, 24, MailboxInbox)
 
 		_, cmd := emailView.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 		if cmd == nil {
