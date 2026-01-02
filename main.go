@@ -1283,11 +1283,20 @@ func runUpdateCLI() error {
 
 	// Detect Homebrew
 	if _, err := exec.LookPath("brew"); err == nil {
-		fmt.Println("Detected Homebrew — attempting to upgrade via brew.")
-		cmd := exec.Command("brew", "upgrade", "matcha")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err == nil {
+		fmt.Println("Detected Homebrew — updating taps and attempting to upgrade via brew.")
+
+		updateCmd := exec.Command("brew", "update")
+		updateCmd.Stdout = os.Stdout
+		updateCmd.Stderr = os.Stderr
+		if err := updateCmd.Run(); err != nil {
+			fmt.Printf("Homebrew update failed: %v\n", err)
+			// continue to attempt upgrade even if update failed
+		}
+
+		upgradeCmd := exec.Command("brew", "upgrade", "matcha")
+		upgradeCmd.Stdout = os.Stdout
+		upgradeCmd.Stderr = os.Stderr
+		if err := upgradeCmd.Run(); err == nil {
 			fmt.Println("Successfully upgraded via Homebrew.")
 			return nil
 		}
