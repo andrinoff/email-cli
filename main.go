@@ -63,7 +63,10 @@ type mainModel struct {
 	config        *config.Config
 	emails        []fetcher.Email
 	emailsByAcct  map[string][]fetcher.Email
+	sentEmails   []fetcher.Email
+	sentByAcct   map[string][]fetcher.Email
 	inbox         *tui.Inbox
+	sentInbox    *tui.Inbox
 	width         int
 	height        int
 	err           error
@@ -72,6 +75,7 @@ type mainModel struct {
 func newInitialModel(cfg *config.Config) *mainModel {
 	initialModel := &mainModel{
 		emailsByAcct: make(map[string][]fetcher.Email),
+		sentByAcct:   make(map[string][]fetcher.Email),
 	}
 
 	if cfg == nil || !cfg.HasAccounts() {
@@ -120,6 +124,22 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.current = tui.NewChoice()
 		}
+		return m, nil
+
+	case tui.BackToMailboxMsg:
+		switch msg.Mailbox {
+		case tui.MailboxSent:
+			if m.sentInbox != nil {
+				m.current = m.sentInbox
+				return m, nil
+			}
+		case tui.MailboxInbox:
+			if m.inbox != nil {
+				m.current = m.inbox
+				return m, nil
+			}
+		}
+		m.current = tui.NewChoice()
 		return m, nil
 
 	case tui.DiscardDraftMsg:
@@ -196,13 +216,21 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// No cache, fetch normally
 		m.current = tui.NewStatus("Fetching emails from all accounts...")
-		return m, tea.Batch(m.current.Init(), fetchAllAccountsEmails(m.config))
+		return m, tea.Batch(m.current.Init(), fetchAllAccountsEmails(m.config, tui.MailboxInbox))
+
+	case tui.GoToSentInboxMsg:
+		if m.config == nil || !m.config.HasAccounts() {
+			m.current = tui.NewLogin()
+			return m, m.current.Init()
+		}
+		m.current = tui.NewStatus("Fetching sent emails from all accounts...")
+		return m, tea.Batch(m.current.Init(), fetchAllAccountsEmails(m.config, tui.MailboxSent))
 
 	case tui.CachedEmailsLoadedMsg:
 		if msg.Cache == nil {
 			// Cache load failed, fetch normally
 			m.current = tui.NewStatus("Fetching emails from all accounts...")
-			return m, tea.Batch(m.current.Init(), fetchAllAccountsEmails(m.config))
+			return m, tea.Batch(m.current.Init(), fetchAllAccountsEmails(m.config, tui.MailboxInbox))
 		}
 
 		// Convert cached emails to fetcher.Email
@@ -231,31 +259,25 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Start background refresh
 		return m, tea.Batch(
 			m.current.Init(),
-			func() tea.Msg { return tui.RefreshingEmailsMsg{} },
-			refreshEmails(m.config),
+			func() tea.Msg { return tui.RefreshingEmailsMsg{Mailbox: tui.MailboxInbox} },
+			refreshEmails(m.config, tui.MailboxInbox),
 		)
 
 	case tui.EmailsRefreshedMsg:
-		m.emailsByAcct = msg.EmailsByAccount
-
-		// Flatten all emails
-		var allEmails []fetcher.Email
-		for _, emails := range msg.EmailsByAccount {
-			allEmails = append(allEmails, emails...)
-		}
-
-		// Sort by date (newest first)
-		for i := 0; i < len(allEmails); i++ {
-			for j := i + 1; j < len(allEmails); j++ {
-				if allEmails[j].Date.After(allEmails[i].Date) {
-					allEmails[i], allEmails[j] = allEmails[j], allEmails[i]
-				}
+		if msg.Mailbox == tui.MailboxSent {
+			m.sentByAcct = msg.EmailsByAccount
+			m.sentEmails = flattenAndSort(msg.EmailsByAccount)
+			if m.sentInbox != nil {
+				m.sentInbox.SetEmails(m.sentEmails, m.config.Accounts)
+				m.current, _ = m.current.Update(msg)
 			}
+			return m, nil
 		}
 
-		m.emails = allEmails
+		m.emailsByAcct = msg.EmailsByAccount
+		m.emails = flattenAndSort(msg.EmailsByAccount)
 
-		// Save to cache
+		// Save to cache (inbox only)
 		go saveEmailsToCache(m.emails)
 
 		// Update inbox if it exists
@@ -267,24 +289,18 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tui.AllEmailsFetchedMsg:
+		if msg.Mailbox == tui.MailboxSent {
+			m.sentByAcct = msg.EmailsByAccount
+			m.sentEmails = flattenAndSort(msg.EmailsByAccount)
+
+			m.sentInbox = tui.NewSentInbox(m.sentEmails, m.config.Accounts)
+			m.current = m.sentInbox
+			m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+			return m, m.current.Init()
+		}
+
 		m.emailsByAcct = msg.EmailsByAccount
-
-		// Flatten all emails
-		var allEmails []fetcher.Email
-		for _, emails := range msg.EmailsByAccount {
-			allEmails = append(allEmails, emails...)
-		}
-
-		// Sort by date (newest first)
-		for i := 0; i < len(allEmails); i++ {
-			for j := i + 1; j < len(allEmails); j++ {
-				if allEmails[j].Date.After(allEmails[i].Date) {
-					allEmails[i], allEmails[j] = allEmails[j], allEmails[i]
-				}
-			}
-		}
-
-		m.emails = allEmails
+		m.emails = flattenAndSort(msg.EmailsByAccount)
 
 		// Save to cache
 		go saveEmailsToCache(m.emails)
@@ -295,28 +311,28 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.current.Init()
 
 	case tui.EmailsFetchedMsg:
-		// Single account fetch result
+		if msg.Mailbox == tui.MailboxSent {
+			if m.sentByAcct == nil {
+				m.sentByAcct = make(map[string][]fetcher.Email)
+			}
+			m.sentByAcct[msg.AccountID] = msg.Emails
+			m.sentEmails = flattenAndSort(m.sentByAcct)
+			if m.sentInbox == nil {
+				m.sentInbox = tui.NewSentInbox(m.sentEmails, m.config.Accounts)
+			} else {
+				m.sentInbox.SetEmails(m.sentEmails, m.config.Accounts)
+			}
+			m.current = m.sentInbox
+			m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+			return m, m.current.Init()
+		}
+
+		// Inbox path
 		if m.emailsByAcct == nil {
 			m.emailsByAcct = make(map[string][]fetcher.Email)
 		}
 		m.emailsByAcct[msg.AccountID] = msg.Emails
-
-		// Rebuild all emails
-		var allEmails []fetcher.Email
-		for _, emails := range m.emailsByAcct {
-			allEmails = append(allEmails, emails...)
-		}
-
-		// Sort by date
-		for i := 0; i < len(allEmails); i++ {
-			for j := i + 1; j < len(allEmails); j++ {
-				if allEmails[j].Date.After(allEmails[i].Date) {
-					allEmails[i], allEmails[j] = allEmails[j], allEmails[i]
-				}
-			}
-		}
-
-		m.emails = allEmails
+		m.emails = flattenAndSort(m.emailsByAcct)
 		if m.inbox == nil {
 			m.inbox = tui.NewInbox(m.emails, m.config.Accounts)
 		} else {
@@ -336,11 +352,19 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(
 			func() tea.Msg { return tui.FetchingMoreEmailsMsg{} },
-			fetchEmails(account, paginationLimit, msg.Offset),
+			fetchEmails(account, paginationLimit, msg.Offset, msg.Mailbox),
 		)
 
 	case tui.EmailsAppendedMsg:
-		// Add new emails to the appropriate account
+		if msg.Mailbox == tui.MailboxSent {
+			if m.sentByAcct == nil {
+				m.sentByAcct = make(map[string][]fetcher.Email)
+			}
+			m.sentByAcct[msg.AccountID] = append(m.sentByAcct[msg.AccountID], msg.Emails...)
+			m.sentEmails = append(m.sentEmails, msg.Emails...)
+			return m, nil
+		}
+		// Inbox
 		if m.emailsByAcct == nil {
 			m.emailsByAcct = make(map[string][]fetcher.Email)
 		}
@@ -426,32 +450,40 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.current.Init()
 
 	case tui.ViewEmailMsg:
-		email := m.getEmailByUIDAndAccount(msg.UID, msg.AccountID)
+		email := m.getEmailByUIDAndAccount(msg.UID, msg.AccountID, msg.Mailbox)
 		if email == nil {
 			return m, nil
 		}
 		m.current = tui.NewStatus("Fetching email content...")
-		return m, tea.Batch(m.current.Init(), fetchEmailBodyCmd(m.config, *email, msg.UID, msg.AccountID))
+		return m, tea.Batch(m.current.Init(), fetchEmailBodyCmd(m.config, *email, msg.UID, msg.AccountID, msg.Mailbox))
 
 	case tui.EmailBodyFetchedMsg:
 		if msg.Err != nil {
 			log.Printf("could not fetch email body: %v", msg.Err)
-			m.current = m.inbox
+			if msg.Mailbox == tui.MailboxSent && m.sentInbox != nil {
+				m.current = m.sentInbox
+			} else {
+				m.current = m.inbox
+			}
 			return m, nil
 		}
 
 		// Update the email in our stores
-		m.updateEmailBodyByUID(msg.UID, msg.AccountID, msg.Body, msg.Attachments)
+		m.updateEmailBodyByUID(msg.UID, msg.AccountID, msg.Mailbox, msg.Body, msg.Attachments)
 
-		email := m.getEmailByUIDAndAccount(msg.UID, msg.AccountID)
+		email := m.getEmailByUIDAndAccount(msg.UID, msg.AccountID, msg.Mailbox)
 		if email == nil {
-			m.current = m.inbox
+			if msg.Mailbox == tui.MailboxSent && m.sentInbox != nil {
+				m.current = m.sentInbox
+			} else {
+				m.current = m.inbox
+			}
 			return m, nil
 		}
 
 		// Find the index for the email view (used for display purposes)
-		emailIndex := m.getEmailIndex(msg.UID, msg.AccountID)
-		emailView := tui.NewEmailView(*email, emailIndex, m.width, m.height)
+		emailIndex := m.getEmailIndex(msg.UID, msg.AccountID, msg.Mailbox)
+		emailView := tui.NewEmailView(*email, emailIndex, m.width, m.height, msg.Mailbox)
 		m.current = emailView
 		return m, m.current.Init()
 
@@ -536,11 +568,15 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		account := m.config.GetAccountByID(msg.AccountID)
 		if account == nil {
-			m.current = m.inbox
+			if msg.Mailbox == tui.MailboxSent && m.sentInbox != nil {
+				m.current = m.sentInbox
+			} else {
+				m.current = m.inbox
+			}
 			return m, nil
 		}
 
-		return m, tea.Batch(m.current.Init(), deleteEmailCmd(account, msg.UID, msg.AccountID))
+		return m, tea.Batch(m.current.Init(), deleteEmailCmd(account, msg.UID, msg.AccountID, msg.Mailbox))
 
 	case tui.ArchiveEmailMsg:
 		m.previousModel = m.current
@@ -548,27 +584,48 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		account := m.config.GetAccountByID(msg.AccountID)
 		if account == nil {
-			m.current = m.inbox
+			if msg.Mailbox == tui.MailboxSent && m.sentInbox != nil {
+				m.current = m.sentInbox
+			} else {
+				m.current = m.inbox
+			}
 			return m, nil
 		}
 
-		return m, tea.Batch(m.current.Init(), archiveEmailCmd(account, msg.UID, msg.AccountID))
+		return m, tea.Batch(m.current.Init(), archiveEmailCmd(account, msg.UID, msg.AccountID, msg.Mailbox))
 
 	case tui.EmailActionDoneMsg:
 		if msg.Err != nil {
 			log.Printf("Action failed: %v", msg.Err)
-			m.current = m.inbox
+			if msg.Mailbox == tui.MailboxSent && m.sentInbox != nil {
+				m.current = m.sentInbox
+			} else {
+				m.current = m.inbox
+			}
 			return m, nil
 		}
 
 		// Remove email from stores
-		m.removeEmail(msg.UID, msg.AccountID)
+		m.removeEmailByMailbox(msg.UID, msg.AccountID, msg.Mailbox)
+
+		if msg.Mailbox == tui.MailboxSent {
+			if m.sentInbox != nil {
+				m.sentInbox.RemoveEmail(msg.UID, msg.AccountID)
+				m.current = m.sentInbox
+				m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+				return m, m.current.Init()
+			}
+			m.current = tui.NewChoice()
+			return m, m.current.Init()
+		}
 
 		if m.inbox != nil {
 			m.inbox.RemoveEmail(msg.UID, msg.AccountID)
+			m.current = m.inbox
+			m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+			return m, m.current.Init()
 		}
-		m.current = m.inbox
-		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		m.current = tui.NewChoice()
 		return m, m.current.Init()
 
 	case tui.DownloadAttachmentMsg:
@@ -581,7 +638,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		email := m.getEmailByIndex(msg.Index)
+		email := m.getEmailByIndex(msg.Index, msg.Mailbox)
 		if email == nil {
 			m.current = m.previousModel
 			return m, nil
@@ -602,6 +659,7 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Data:      msg.Data,
 			AccountID: msg.AccountID,
 			Encoding:  encoding,
+			Mailbox:   msg.Mailbox,
 		}
 		return m, tea.Batch(m.current.Init(), downloadAttachmentCmd(account, email.UID, newMsg))
 
@@ -628,72 +686,131 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m *mainModel) getEmailByIndex(index int) *fetcher.Email {
-	if index >= 0 && index < len(m.emails) {
-		return &m.emails[index]
-	}
-	return nil
-}
-
-func (m *mainModel) getEmailByUIDAndAccount(uid uint32, accountID string) *fetcher.Email {
-	for i := range m.emails {
-		if m.emails[i].UID == uid && m.emails[i].AccountID == accountID {
-			return &m.emails[i]
+func (m *mainModel) getEmailByIndex(index int, mailbox tui.MailboxKind) *fetcher.Email {
+	switch mailbox {
+	case tui.MailboxSent:
+		if index >= 0 && index < len(m.sentEmails) {
+			return &m.sentEmails[index]
+		}
+	default:
+		if index >= 0 && index < len(m.emails) {
+			return &m.emails[index]
 		}
 	}
 	return nil
 }
 
-func (m *mainModel) getEmailIndex(uid uint32, accountID string) int {
-	for i := range m.emails {
-		if m.emails[i].UID == uid && m.emails[i].AccountID == accountID {
-			return i
+func (m *mainModel) getEmailByUIDAndAccount(uid uint32, accountID string, mailbox tui.MailboxKind) *fetcher.Email {
+	switch mailbox {
+	case tui.MailboxSent:
+		for i := range m.sentEmails {
+			if m.sentEmails[i].UID == uid && m.sentEmails[i].AccountID == accountID {
+				return &m.sentEmails[i]
+			}
+		}
+	default:
+		for i := range m.emails {
+			if m.emails[i].UID == uid && m.emails[i].AccountID == accountID {
+				return &m.emails[i]
+			}
+		}
+	}
+	return nil
+}
+
+func (m *mainModel) getEmailIndex(uid uint32, accountID string, mailbox tui.MailboxKind) int {
+	switch mailbox {
+	case tui.MailboxSent:
+		for i := range m.sentEmails {
+			if m.sentEmails[i].UID == uid && m.sentEmails[i].AccountID == accountID {
+				return i
+			}
+		}
+	default:
+		for i := range m.emails {
+			if m.emails[i].UID == uid && m.emails[i].AccountID == accountID {
+				return i
+			}
 		}
 	}
 	return -1
 }
 
-func (m *mainModel) updateEmailBodyByUID(uid uint32, accountID string, body string, attachments []fetcher.Attachment) {
-	// Update in all emails list
-	for i := range m.emails {
-		if m.emails[i].UID == uid && m.emails[i].AccountID == accountID {
-			m.emails[i].Body = body
-			m.emails[i].Attachments = attachments
-			break
-		}
-	}
-
-	// Also update in account-specific store
-	if emails, ok := m.emailsByAcct[accountID]; ok {
-		for i := range emails {
-			if emails[i].UID == uid {
-				emails[i].Body = body
-				emails[i].Attachments = attachments
+func (m *mainModel) updateEmailBodyByUID(uid uint32, accountID string, mailbox tui.MailboxKind, body string, attachments []fetcher.Attachment) {
+	switch mailbox {
+	case tui.MailboxSent:
+		for i := range m.sentEmails {
+			if m.sentEmails[i].UID == uid && m.sentEmails[i].AccountID == accountID {
+				m.sentEmails[i].Body = body
+				m.sentEmails[i].Attachments = attachments
 				break
+			}
+		}
+		if emails, ok := m.sentByAcct[accountID]; ok {
+			for i := range emails {
+				if emails[i].UID == uid {
+					emails[i].Body = body
+					emails[i].Attachments = attachments
+					break
+				}
+			}
+		}
+	default:
+		for i := range m.emails {
+			if m.emails[i].UID == uid && m.emails[i].AccountID == accountID {
+				m.emails[i].Body = body
+				m.emails[i].Attachments = attachments
+				break
+			}
+		}
+		if emails, ok := m.emailsByAcct[accountID]; ok {
+			for i := range emails {
+				if emails[i].UID == uid {
+					emails[i].Body = body
+					emails[i].Attachments = attachments
+					break
+				}
 			}
 		}
 	}
 }
 
-func (m *mainModel) removeEmail(uid uint32, accountID string) {
-	// Remove from all emails
-	var filtered []fetcher.Email
-	for _, e := range m.emails {
-		if !(e.UID == uid && e.AccountID == accountID) {
-			filtered = append(filtered, e)
-		}
-	}
-	m.emails = filtered
-
-	// Remove from account-specific store
-	if emails, ok := m.emailsByAcct[accountID]; ok {
-		var filteredAcct []fetcher.Email
-		for _, e := range emails {
-			if e.UID != uid {
-				filteredAcct = append(filteredAcct, e)
+func (m *mainModel) removeEmailByMailbox(uid uint32, accountID string, mailbox tui.MailboxKind) {
+	switch mailbox {
+	case tui.MailboxSent:
+		var filtered []fetcher.Email
+		for _, e := range m.sentEmails {
+			if !(e.UID == uid && e.AccountID == accountID) {
+				filtered = append(filtered, e)
 			}
 		}
-		m.emailsByAcct[accountID] = filteredAcct
+		m.sentEmails = filtered
+		if emails, ok := m.sentByAcct[accountID]; ok {
+			var filteredAcct []fetcher.Email
+			for _, e := range emails {
+				if e.UID != uid {
+					filteredAcct = append(filteredAcct, e)
+				}
+			}
+			m.sentByAcct[accountID] = filteredAcct
+		}
+	default:
+		var filtered []fetcher.Email
+		for _, e := range m.emails {
+			if !(e.UID == uid && e.AccountID == accountID) {
+				filtered = append(filtered, e)
+			}
+		}
+		m.emails = filtered
+		if emails, ok := m.emailsByAcct[accountID]; ok {
+			var filteredAcct []fetcher.Email
+			for _, e := range emails {
+				if e.UID != uid {
+					filteredAcct = append(filteredAcct, e)
+				}
+			}
+			m.emailsByAcct[accountID] = filteredAcct
+		}
 	}
 }
 
@@ -701,7 +818,22 @@ func (m *mainModel) View() string {
 	return m.current.View()
 }
 
-func fetchAllAccountsEmails(cfg *config.Config) tea.Cmd {
+func flattenAndSort(emailsByAccount map[string][]fetcher.Email) []fetcher.Email {
+	var allEmails []fetcher.Email
+	for _, emails := range emailsByAccount {
+		allEmails = append(allEmails, emails...)
+	}
+	for i := 0; i < len(allEmails); i++ {
+		for j := i + 1; j < len(allEmails); j++ {
+			if allEmails[j].Date.After(allEmails[i].Date) {
+				allEmails[i], allEmails[j] = allEmails[j], allEmails[i]
+			}
+		}
+	}
+	return allEmails
+}
+
+func fetchAllAccountsEmails(cfg *config.Config, mailbox tui.MailboxKind) tea.Cmd {
 	return func() tea.Msg {
 		emailsByAccount := make(map[string][]fetcher.Email)
 		var mu sync.Mutex
@@ -711,7 +843,13 @@ func fetchAllAccountsEmails(cfg *config.Config) tea.Cmd {
 			wg.Add(1)
 			go func(acc config.Account) {
 				defer wg.Done()
-				emails, err := fetcher.FetchEmails(&acc, initialEmailLimit, 0)
+				var emails []fetcher.Email
+				var err error
+				if mailbox == tui.MailboxSent {
+					emails, err = fetcher.FetchSentEmails(&acc, initialEmailLimit, 0)
+				} else {
+					emails, err = fetcher.FetchEmails(&acc, initialEmailLimit, 0)
+				}
 				if err != nil {
 					log.Printf("Error fetching from %s: %v", acc.Email, err)
 					return
@@ -723,20 +861,26 @@ func fetchAllAccountsEmails(cfg *config.Config) tea.Cmd {
 		}
 
 		wg.Wait()
-		return tui.AllEmailsFetchedMsg{EmailsByAccount: emailsByAccount}
+		return tui.AllEmailsFetchedMsg{EmailsByAccount: emailsByAccount, Mailbox: mailbox}
 	}
 }
 
-func fetchEmails(account *config.Account, limit, offset uint32) tea.Cmd {
+func fetchEmails(account *config.Account, limit, offset uint32, mailbox tui.MailboxKind) tea.Cmd {
 	return func() tea.Msg {
-		emails, err := fetcher.FetchEmails(account, limit, offset)
+		var emails []fetcher.Email
+		var err error
+		if mailbox == tui.MailboxSent {
+			emails, err = fetcher.FetchSentEmails(account, limit, offset)
+		} else {
+			emails, err = fetcher.FetchEmails(account, limit, offset)
+		}
 		if err != nil {
 			return tui.FetchErr(err)
 		}
 		if offset == 0 {
-			return tui.EmailsFetchedMsg{Emails: emails, AccountID: account.ID}
+			return tui.EmailsFetchedMsg{Emails: emails, AccountID: account.ID, Mailbox: mailbox}
 		}
-		return tui.EmailsAppendedMsg{Emails: emails, AccountID: account.ID}
+		return tui.EmailsAppendedMsg{Emails: emails, AccountID: account.ID, Mailbox: mailbox}
 	}
 }
 
@@ -750,7 +894,7 @@ func loadCachedEmails() tea.Cmd {
 	}
 }
 
-func refreshEmails(cfg *config.Config) tea.Cmd {
+func refreshEmails(cfg *config.Config, mailbox tui.MailboxKind) tea.Cmd {
 	return func() tea.Msg {
 		emailsByAccount := make(map[string][]fetcher.Email)
 		var mu sync.Mutex
@@ -760,7 +904,13 @@ func refreshEmails(cfg *config.Config) tea.Cmd {
 			wg.Add(1)
 			go func(acc config.Account) {
 				defer wg.Done()
-				emails, err := fetcher.FetchEmails(&acc, initialEmailLimit, 0)
+				var emails []fetcher.Email
+				var err error
+				if mailbox == tui.MailboxSent {
+					emails, err = fetcher.FetchSentEmails(&acc, initialEmailLimit, 0)
+				} else {
+					emails, err = fetcher.FetchEmails(&acc, initialEmailLimit, 0)
+				}
 				if err != nil {
 					log.Printf("Error fetching from %s: %v", acc.Email, err)
 					return
@@ -772,7 +922,7 @@ func refreshEmails(cfg *config.Config) tea.Cmd {
 		}
 
 		wg.Wait()
-		return tui.EmailsRefreshedMsg{EmailsByAccount: emailsByAccount}
+		return tui.EmailsRefreshedMsg{EmailsByAccount: emailsByAccount, Mailbox: mailbox}
 	}
 }
 
@@ -820,16 +970,25 @@ func parseEmailAddress(addr string) (name, email string) {
 	return name, email
 }
 
-func fetchEmailBodyCmd(cfg *config.Config, email fetcher.Email, uid uint32, accountID string) tea.Cmd {
+func fetchEmailBodyCmd(cfg *config.Config, email fetcher.Email, uid uint32, accountID string, mailbox tui.MailboxKind) tea.Cmd {
 	return func() tea.Msg {
 		account := cfg.GetAccountByID(accountID)
 		if account == nil {
-			return tui.EmailBodyFetchedMsg{UID: uid, AccountID: accountID, Err: fmt.Errorf("account not found")}
+			return tui.EmailBodyFetchedMsg{UID: uid, AccountID: accountID, Mailbox: mailbox, Err: fmt.Errorf("account not found")}
 		}
 
-		body, attachments, err := fetcher.FetchEmailBody(account, uid)
+		var (
+			body        string
+			attachments []fetcher.Attachment
+			err         error
+		)
+		if mailbox == tui.MailboxSent {
+			body, attachments, err = fetcher.FetchSentEmailBody(account, uid)
+		} else {
+			body, attachments, err = fetcher.FetchEmailBody(account, uid)
+		}
 		if err != nil {
-			return tui.EmailBodyFetchedMsg{UID: uid, AccountID: accountID, Err: err}
+			return tui.EmailBodyFetchedMsg{UID: uid, AccountID: accountID, Mailbox: mailbox, Err: err}
 		}
 
 		return tui.EmailBodyFetchedMsg{
@@ -837,6 +996,7 @@ func fetchEmailBodyCmd(cfg *config.Config, email fetcher.Email, uid uint32, acco
 			Body:        body,
 			Attachments: attachments,
 			AccountID:   accountID,
+			Mailbox:     mailbox,
 		}
 	}
 }
@@ -897,24 +1057,40 @@ func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 	}
 }
 
-func deleteEmailCmd(account *config.Account, uid uint32, accountID string) tea.Cmd {
+func deleteEmailCmd(account *config.Account, uid uint32, accountID string, mailbox tui.MailboxKind) tea.Cmd {
 	return func() tea.Msg {
-		err := fetcher.DeleteEmail(account, uid)
-		return tui.EmailActionDoneMsg{UID: uid, AccountID: accountID, Err: err}
+		var err error
+		if mailbox == tui.MailboxSent {
+			err = fetcher.DeleteSentEmail(account, uid)
+		} else {
+			err = fetcher.DeleteEmail(account, uid)
+		}
+		return tui.EmailActionDoneMsg{UID: uid, AccountID: accountID, Mailbox: mailbox, Err: err}
 	}
 }
 
-func archiveEmailCmd(account *config.Account, uid uint32, accountID string) tea.Cmd {
+func archiveEmailCmd(account *config.Account, uid uint32, accountID string, mailbox tui.MailboxKind) tea.Cmd {
 	return func() tea.Msg {
-		err := fetcher.ArchiveEmail(account, uid)
-		return tui.EmailActionDoneMsg{UID: uid, AccountID: accountID, Err: err}
+		var err error
+		if mailbox == tui.MailboxSent {
+			err = fetcher.ArchiveSentEmail(account, uid)
+		} else {
+			err = fetcher.ArchiveEmail(account, uid)
+		}
+		return tui.EmailActionDoneMsg{UID: uid, AccountID: accountID, Mailbox: mailbox, Err: err}
 	}
 }
 
 func downloadAttachmentCmd(account *config.Account, uid uint32, msg tui.DownloadAttachmentMsg) tea.Cmd {
 	return func() tea.Msg {
 		// Download and decode the attachment using encoding provided in msg.Encoding.
-		data, err := fetcher.FetchAttachment(account, uid, msg.PartID, msg.Encoding)
+		var data []byte
+		var err error
+		if msg.Mailbox == tui.MailboxSent {
+			data, err = fetcher.FetchSentAttachment(account, uid, msg.PartID, msg.Encoding)
+		} else {
+			data, err = fetcher.FetchAttachment(account, uid, msg.PartID, msg.Encoding)
+		}
 		if err != nil {
 			return tui.AttachmentDownloadedMsg{Err: err}
 		}

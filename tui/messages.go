@@ -5,10 +5,18 @@ import (
 	"github.com/floatpane/matcha/fetcher"
 )
 
+type MailboxKind string
+
+const (
+	MailboxInbox MailboxKind = "inbox"
+	MailboxSent  MailboxKind = "sent"
+)
+
 type ViewEmailMsg struct {
 	Index     int
 	UID       uint32
 	AccountID string
+	Mailbox   MailboxKind
 }
 
 type SendEmailMsg struct {
@@ -46,11 +54,15 @@ type ClearStatusMsg struct{}
 type EmailsFetchedMsg struct {
 	Emails    []fetcher.Email
 	AccountID string
+	Mailbox   MailboxKind
 }
 
 type FetchErr error
 
 type GoToInboxMsg struct{}
+
+type GoToSentInboxMsg struct{}
+
 
 type GoToSendMsg struct {
 	To      string
@@ -63,6 +75,7 @@ type GoToSettingsMsg struct{}
 type FetchMoreEmailsMsg struct {
 	Offset    uint32
 	AccountID string
+	Mailbox   MailboxKind
 }
 
 type FetchingMoreEmailsMsg struct{}
@@ -70,6 +83,7 @@ type FetchingMoreEmailsMsg struct{}
 type EmailsAppendedMsg struct {
 	Emails    []fetcher.Email
 	AccountID string
+	Mailbox   MailboxKind
 }
 
 type ReplyToEmailMsg struct {
@@ -89,16 +103,19 @@ type CancelFilePickerMsg struct{}
 type DeleteEmailMsg struct {
 	UID       uint32
 	AccountID string
+	Mailbox   MailboxKind
 }
 
 type ArchiveEmailMsg struct {
 	UID       uint32
 	AccountID string
+	Mailbox   MailboxKind
 }
 
 type EmailActionDoneMsg struct {
 	UID       uint32
 	AccountID string
+	Mailbox   MailboxKind
 	Err       error
 }
 
@@ -111,6 +128,7 @@ type DownloadAttachmentMsg struct {
 	Data      []byte
 	AccountID string
 	Encoding  string
+	Mailbox   MailboxKind
 }
 
 type AttachmentDownloadedMsg struct {
@@ -121,6 +139,10 @@ type AttachmentDownloadedMsg struct {
 type RestoreViewMsg struct{}
 
 type BackToInboxMsg struct{}
+
+type BackToMailboxMsg struct {
+	Mailbox MailboxKind
+}
 
 // --- Draft Messages ---
 
@@ -135,6 +157,7 @@ type EmailBodyFetchedMsg struct {
 	Attachments []fetcher.Attachment
 	Err         error
 	AccountID   string
+	Mailbox     MailboxKind
 }
 
 // --- Multi-Account Messages ---
@@ -172,6 +195,7 @@ type SwitchAccountMsg struct {
 // AllEmailsFetchedMsg signals that emails from all accounts have been fetched.
 type AllEmailsFetchedMsg struct {
 	EmailsByAccount map[string][]fetcher.Email
+	Mailbox         MailboxKind
 }
 
 // SwitchFromAccountMsg signals changing the "From" account in composer.
@@ -230,9 +254,12 @@ type CachedEmailsLoadedMsg struct {
 }
 
 // RefreshingEmailsMsg signals that a background refresh is in progress.
-type RefreshingEmailsMsg struct{}
+type RefreshingEmailsMsg struct{
+	Mailbox MailboxKind
+}
 
 // EmailsRefreshedMsg signals that fresh emails have been fetched in the background.
 type EmailsRefreshedMsg struct {
 	EmailsByAccount map[string][]fetcher.Email
+	Mailbox         MailboxKind
 }
