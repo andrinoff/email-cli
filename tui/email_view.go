@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -28,7 +29,8 @@ type EmailView struct {
 
 func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox MailboxKind) *EmailView {
 	// Pass the styles from the tui package to the view package
-	body, err := view.ProcessBody(email.Body, H1Style, H2Style, BodyStyle)
+	inlineImages := inlineImagesFromAttachments(email.Attachments)
+	body, err := view.ProcessBodyWithInline(email.Body, inlineImages, H1Style, H2Style, BodyStyle)
 	if err != nil {
 		body = fmt.Sprintf("Error rendering body: %v", err)
 	}
@@ -42,12 +44,10 @@ func NewEmailView(email fetcher.Email, emailIndex, width, height int, mailbox Ma
 		attachmentHeight = len(email.Attachments) + 2
 	}
 
-	// Build viewport with initial size and set wrapped content to fit the width.
+	// Build viewport with initial size and set wrapped content.
 	vp := viewport.New(width, height-headerHeight-attachmentHeight)
-
-	// Wrap the body to the viewport width so lines don't run off-screen.
 	wrapped := wrapBodyToWidth(body, vp.Width)
-	vp.SetContent(wrapped)
+	vp.SetContent("\x1b_Ga=d\x1b\\\n" + wrapped + "\n")
 
 	return &EmailView{
 		viewport:   vp,
@@ -74,6 +74,7 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focusOnAttachments = false
 				return m, nil
 			}
+			m.viewport.SetContent("\x1b_Ga=d\x1b\\")
 			return m, func() tea.Msg { return BackToMailboxMsg{Mailbox: m.mailbox} }
 		}
 
@@ -139,13 +140,14 @@ func (m *EmailView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Width = msg.Width
 		m.viewport.Height = msg.Height - headerHeight - attachmentHeight
 
-		// When the window size changes, rewrap the body to the new width
-		body, err := view.ProcessBody(m.email.Body, H1Style, H2Style, BodyStyle)
+		// When the window size changes, wrap and clear kitty images to keep placement stable
+		inlineImages := inlineImagesFromAttachments(m.email.Attachments)
+		body, err := view.ProcessBodyWithInline(m.email.Body, inlineImages, H1Style, H2Style, BodyStyle)
 		if err != nil {
 			body = fmt.Sprintf("Error rendering body: %v", err)
 		}
 		wrapped := wrapBodyToWidth(body, m.viewport.Width)
-		m.viewport.SetContent(wrapped)
+		m.viewport.SetContent("\x1b_Ga=d\x1b\\\n" + wrapped + "\n")
 	}
 
 	m.viewport, cmd = m.viewport.Update(msg)
@@ -188,6 +190,20 @@ func (m *EmailView) View() string {
 // GetAccountID returns the account ID for this email
 func (m *EmailView) GetAccountID() string {
 	return m.accountID
+}
+
+func inlineImagesFromAttachments(atts []fetcher.Attachment) []view.InlineImage {
+	var imgs []view.InlineImage
+	for _, att := range atts {
+		if !att.Inline || len(att.Data) == 0 || att.ContentID == "" {
+			continue
+		}
+		imgs = append(imgs, view.InlineImage{
+			CID:    att.ContentID,
+			Base64: base64.StdEncoding.EncodeToString(att.Data),
+		})
+	}
+	return imgs
 }
 
 func wrapBodyToWidth(body string, width int) string {

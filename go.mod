@@ -11,6 +11,7 @@ require (
 	github.com/emersion/go-message v0.18.2
 	github.com/google/uuid v1.6.0
 	github.com/yuin/goldmark v1.7.13
+	golang.org/x/sys v0.38.0
 	golang.org/x/text v0.32.0
 )
 
@@ -35,5 +36,4 @@ require (
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
 )
