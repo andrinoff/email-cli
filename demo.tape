@@ -44,6 +44,8 @@ Down
 Sleep 600ms
 Down
 Sleep 600ms
+Down
+Sleep 600ms
 
 # Navigate back up to "View Inbox"
 Up
