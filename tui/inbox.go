@@ -458,7 +458,7 @@ func (m *Inbox) View() string {
 	}
 
 	b.WriteString(m.list.View())
-	return "\n" + b.String()
+	return "\x1b_Ga=d\x1b\\\\\n" + b.String()
 }
 
 // GetCurrentAccountID returns the currently selected account ID
