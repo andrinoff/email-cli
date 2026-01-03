@@ -127,7 +127,8 @@ func SendEmail(account *config.Account, to []string, subject, plainBody, htmlBod
 		if err != nil {
 			return err
 		}
-		imgPart.Write(data) // data is already base64 encoded
+		// data is already base64 encoded, but needs MIME line wrapping (76 chars per line)
+		imgPart.Write([]byte(wrapBase64(string(data))))
 	}
 
 	relatedWriter.Close() // Finish the related part
@@ -149,11 +150,29 @@ func SendEmail(account *config.Account, to []string, subject, plainBody, htmlBod
 			return err
 		}
 		encodedData := base64.StdEncoding.EncodeToString(data)
-		attachmentPart.Write([]byte(encodedData))
+		// MIME requires base64 to be line-wrapped at 76 characters
+		attachmentPart.Write([]byte(wrapBase64(encodedData)))
 	}
 
 	mainWriter.Close() // Finish the main message
 
 	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
 	return smtp.SendMail(addr, auth, account.Email, to, msg.Bytes())
+}
+
+// wrapBase64 wraps base64-encoded data at 76 characters per line as required by MIME.
+func wrapBase64(data string) string {
+	const lineLength = 76
+	var result strings.Builder
+	for i := 0; i < len(data); i += lineLength {
+		end := i + lineLength
+		if end > len(data) {
+			end = len(data)
+		}
+		result.WriteString(data[i:end])
+		if end < len(data) {
+			result.WriteString("\r\n")
+		}
+	}
+	return result.String()
 }
