@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"mime"
 	"mime/quotedprintable"
+	"os"
 	"strings"
 	"time"
 
@@ -21,10 +22,13 @@ import (
 
 // Attachment holds data for an email attachment.
 type Attachment struct {
-	Filename string
-	PartID   string // Keep PartID to fetch on demand
-	Data     []byte
-	Encoding string // Store encoding for proper decoding
+	Filename  string
+	PartID    string // Keep PartID to fetch on demand
+	Data      []byte
+	Encoding  string // Store encoding for proper decoding
+	MIMEType  string // Full MIME type (e.g., image/png)
+	ContentID string // Content-ID for inline assets (e.g., cid: references)
+	Inline    bool   // True when the part is meant to be displayed inline
 }
 
 type Email struct {
@@ -84,6 +88,18 @@ func decodeHeader(header string) string {
 		return header
 	}
 	return decoded
+}
+
+func decodeAttachmentData(rawBytes []byte, encoding string) ([]byte, error) {
+	switch strings.ToLower(encoding) {
+	case "base64":
+		decoder := base64.NewDecoder(base64.StdEncoding, bytes.NewReader(rawBytes))
+		return ioutil.ReadAll(decoder)
+	case "quoted-printable":
+		return ioutil.ReadAll(quotedprintable.NewReader(bytes.NewReader(rawBytes)))
+	default:
+		return rawBytes, nil
+	}
 }
 
 func connect(account *config.Account) (*client.Client, error) {
@@ -234,6 +250,41 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 	seqset := new(imap.SeqSet)
 	seqset.AddNum(uid)
 
+	fetchInlinePart := func(partID, encoding string) ([]byte, error) {
+		fetchItem := imap.FetchItem(fmt.Sprintf("BODY.PEEK[%s]", partID))
+		section, err := imap.ParseBodySectionName(fetchItem)
+		if err != nil {
+			return nil, err
+		}
+
+		partMessages := make(chan *imap.Message, 1)
+		partDone := make(chan error, 1)
+		go func() {
+			partDone <- c.UidFetch(seqset, []imap.FetchItem{fetchItem}, partMessages)
+		}()
+
+		if err := <-partDone; err != nil {
+			return nil, err
+		}
+
+		partMsg := <-partMessages
+		if partMsg == nil {
+			return nil, fmt.Errorf("could not fetch inline part %s", partID)
+		}
+
+		literal := partMsg.GetBody(section)
+		if literal == nil {
+			return nil, fmt.Errorf("could not get inline part body %s", partID)
+		}
+
+		rawBytes, err := ioutil.ReadAll(literal)
+		if err != nil {
+			return nil, err
+		}
+
+		return decodeAttachmentData(rawBytes, encoding)
+	}
+
 	messages := make(chan *imap.Message, 1)
 	done := make(chan error, 1)
 	fetchItems := []imap.FetchItem{imap.FetchBodyStructure}
@@ -250,13 +301,24 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 		return "", nil, fmt.Errorf("no message or body structure found with UID %d", uid)
 	}
 
-	var textPartID string
+	var plainPartID string
+	var htmlPartID string
 	var attachments []Attachment
 	var checkPart func(part *imap.BodyStructure, partID string)
 	checkPart = func(part *imap.BodyStructure, partID string) {
-		// Check for text content
-		if part.MIMEType == "text" && (part.MIMESubType == "plain" || part.MIMESubType == "html") && textPartID == "" {
-			textPartID = partID
+		// Check for text content (prefer html over plain)
+		if part.MIMEType == "text" {
+			sub := strings.ToLower(part.MIMESubType)
+			switch sub {
+			case "html":
+				if htmlPartID == "" {
+					htmlPartID = partID
+				}
+			case "plain":
+				if plainPartID == "" {
+					plainPartID = partID
+				}
+			}
 		}
 
 		// Check for attachments using multiple methods
@@ -284,13 +346,31 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 			}
 		}
 
-		// Add as attachment if it has a disposition or a filename (and not just plain text)
-		if filename != "" && (part.Disposition == "attachment" || part.Disposition == "inline" || part.MIMEType != "text") {
-			attachments = append(attachments, Attachment{
-				Filename: filename,
-				PartID:   partID,
-				Encoding: part.Encoding, // Store encoding for proper decoding
-			})
+		// Add as attachment if it has a disposition or a filename (and not just plain text).
+		// Allow inline parts without filenames (common for cid images).
+		contentID := strings.Trim(part.Id, "<>")
+		mimeType := fmt.Sprintf("%s/%s", strings.ToLower(part.MIMEType), strings.ToLower(part.MIMESubType))
+		isCID := contentID != ""
+		isInline := part.Disposition == "inline" || isCID
+
+		if filename == "" && isInline && strings.HasPrefix(mimeType, "image/") {
+			filename = "inline"
+		}
+		if (filename != "" || isCID) && (part.Disposition == "attachment" || isInline || part.MIMEType != "text") {
+			att := Attachment{
+				Filename:  filename,
+				PartID:    partID,
+				Encoding:  part.Encoding, // Store encoding for proper decoding
+				MIMEType:  mimeType,
+				ContentID: contentID,
+				Inline:    isInline,
+			}
+			if att.Inline && strings.HasPrefix(att.MIMEType, "image/") {
+				if data, err := fetchInlinePart(partID, part.Encoding); err == nil {
+					att.Data = data
+				}
+			}
+			attachments = append(attachments, att)
 		}
 	}
 
@@ -323,6 +403,22 @@ func FetchEmailBodyFromMailbox(account *config.Account, mailbox string, uid uint
 	findParts(msg.BodyStructure, "")
 
 	var body string
+	textPartID := ""
+	if htmlPartID != "" {
+		textPartID = htmlPartID
+	} else if plainPartID != "" {
+		textPartID = plainPartID
+	}
+	if os.Getenv("DEBUG_KITTY_IMAGES") != "" {
+		msg := fmt.Sprintf("[kitty-img] body selection html=%s plain=%s chosen=%s\n", htmlPartID, plainPartID, textPartID)
+		fmt.Print(msg)
+		if path := os.Getenv("DEBUG_KITTY_LOG"); path != "" {
+			if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+				_, _ = f.WriteString(msg)
+				_ = f.Close()
+			}
+		}
+	}
 	if textPartID != "" {
 		partMessages := make(chan *imap.Message, 1)
 		partDone := make(chan error, 1)
@@ -430,23 +526,11 @@ func FetchAttachmentFromMailbox(account *config.Account, mailbox string, uid uin
 		return nil, err
 	}
 
-	switch strings.ToLower(encoding) {
-	case "base64":
-		decoder := base64.NewDecoder(base64.StdEncoding, bytes.NewReader(rawBytes))
-		decoded, err := ioutil.ReadAll(decoder)
-		if err == nil {
-			return decoded, nil
-		}
-		return rawBytes, nil
-	case "quoted-printable":
-		decoded, err := ioutil.ReadAll(quotedprintable.NewReader(bytes.NewReader(rawBytes)))
-		if err == nil {
-			return decoded, nil
-		}
-		return rawBytes, nil
-	default:
+	decoded, err := decodeAttachmentData(rawBytes, encoding)
+	if err != nil {
 		return rawBytes, nil
 	}
+	return decoded, nil
 }
 
 func moveEmail(account *config.Account, uid uint32, sourceMailbox, destMailbox string) error {
