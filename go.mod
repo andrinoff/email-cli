@@ -10,7 +10,7 @@ require (
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-message v0.18.2
 	github.com/google/uuid v1.6.0
-	github.com/yuin/goldmark v1.7.13
+	github.com/yuin/goldmark v1.7.14
 	golang.org/x/sys v0.39.0
 	golang.org/x/text v0.32.0
 )
