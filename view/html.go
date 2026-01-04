@@ -143,10 +143,11 @@ func hyperlink(url, text string) string {
 		return fmt.Sprintf("\x1b]8;;%s\x07%s\x1b]8;;\x07", url, text)
 	} else {
 		// Fallback to plain text format for unsupported terminals
+		// Use HTML-encoded angle brackets to prevent HTML parser from treating them as tags
 		if text == url {
-			return fmt.Sprintf("<%s>", url)
+			return fmt.Sprintf("&lt;%s&gt;", url)
 		}
-		return fmt.Sprintf("%s <%s>", text, url)
+		return fmt.Sprintf("%s &lt;%s&gt;", text, url)
 	}
 }
 
