@@ -78,12 +78,76 @@ func getCellHeightFromFd(fd int) int {
 	return 0
 }
 
-// hyperlink formats a string as a terminal-clickable hyperlink.
+// hyperlinkSupported checks if the terminal supports OSC 8 hyperlinks.
+func hyperlinkSupported() bool {
+	term := strings.ToLower(os.Getenv("TERM"))
+
+	// Terminals known to support OSC 8 hyperlinks
+	supportedTerms := []string{
+		"kitty",
+		"ghostty",
+		"wezterm",
+		"alacritty",
+		"foot",
+		"tmux",
+		"screen",
+	}
+
+	for _, supported := range supportedTerms {
+		if strings.Contains(term, supported) {
+			return true
+		}
+	}
+
+	// Check for specific terminal programs
+	termProgram := strings.ToLower(os.Getenv("TERM_PROGRAM"))
+	supportedPrograms := []string{
+		"iterm.app",
+		"hyper",
+		"vscode",
+		"ghostty",
+		"wezterm",
+	}
+
+	for _, supported := range supportedPrograms {
+		if strings.Contains(termProgram, supported) {
+			return true
+		}
+	}
+
+	// Check for VTE-based terminals (GNOME Terminal, etc.)
+	if os.Getenv("VTE_VERSION") != "" {
+		return true
+	}
+
+	// Check for specific environment variables that indicate hyperlink support
+	if os.Getenv("KITTY_WINDOW_ID") != "" ||
+		os.Getenv("GHOSTTY_RESOURCES_DIR") != "" ||
+		os.Getenv("WEZTERM_EXECUTABLE") != "" {
+		return true
+	}
+
+	return false
+}
+
+// hyperlink formats a string as either a terminal-clickable hyperlink or plain text with URL.
 func hyperlink(url, text string) string {
 	if text == "" {
 		text = url
 	}
-	return fmt.Sprintf("\x1b]8;;%s\x07%s\x1b]8;;\x07", url, text)
+
+	supported := hyperlinkSupported()
+
+	if supported {
+		// Use OSC 8 hyperlink sequence for supported terminals
+		return fmt.Sprintf("\x1b]8;;%s\x07%s\x1b]8;;\x07", url, text)
+	} else {
+		// Fallback to plain text format for unsupported terminals
+		if text == url {
+			return fmt.Sprintf("<%s>", url)
+		}
+		return fmt.Sprintf("%s <%s>", text, url)
+	}
 }
 
 func decodeQuotedPrintable(s string) (string, error) {
@@ -362,8 +426,11 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 		} else {
 			debugKitty("kitty not detected for src=%s", src)
 		}
-
-		s.ReplaceWithHtml(hyperlink(src, fmt.Sprintf("\n [Click here to view image: %s] \n", alt)))
+		if hyperlinkSupported() {
+			s.ReplaceWithHtml(hyperlink(src, fmt.Sprintf("\n [Click here to view image: %s] \n", alt)))
+		} else {
+			s.ReplaceWithHtml(fmt.Sprintf("\n [Image: %s, %s] \n", alt, src))
+		}
 	})
 
 	text := doc.Text()
