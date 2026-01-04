@@ -197,9 +197,85 @@ func ghosttySupported() bool {
 	return os.Getenv("GHOSTTY_RESOURCES_DIR") != ""
 }
 
+func iterm2Supported() bool {
+	termProgram := strings.ToLower(os.Getenv("TERM_PROGRAM"))
+	if termProgram == "iterm.app" {
+		return true
+	}
+
+	// Check for iTerm2-specific environment variables
+	if os.Getenv("ITERM_SESSION_ID") != "" || os.Getenv("ITERM_PROFILE") != "" {
+		return true
+	}
+
+	return false
+}
+
+func weztermSupported() bool {
+	// Check for WezTerm-specific environment variables
+	if os.Getenv("WEZTERM_EXECUTABLE") != "" || os.Getenv("WEZTERM_CONFIG_FILE") != "" {
+		return true
+	}
+
+	termProgram := strings.ToLower(os.Getenv("TERM_PROGRAM"))
+	if termProgram == "wezterm" {
+		return true
+	}
+
+	term := strings.ToLower(os.Getenv("TERM"))
+	if strings.Contains(term, "wezterm") {
+		return true
+	}
+
+	return false
+}
+
+func waystSupported() bool {
+	term := strings.ToLower(os.Getenv("TERM"))
+	if strings.Contains(term, "wayst") {
+		return true
+	}
+
+	termProgram := strings.ToLower(os.Getenv("TERM_PROGRAM"))
+	if termProgram == "wayst" {
+		return true
+	}
+
+	return false
+}
+
+func warpSupported() bool {
+	termProgram := strings.ToLower(os.Getenv("TERM_PROGRAM"))
+	if termProgram == "warp" {
+		return true
+	}
+
+	// Check for Warp-specific environment variables
+	if os.Getenv("WARP_IS_LOCAL_SHELL_SESSION") != "" || os.Getenv("WARP_COMBINED_PROMPT_COMMAND_FINISHED") != "" {
+		return true
+	}
+
+	return false
+}
+
+func konsoleSupported() bool {
+	// Check for Konsole-specific environment variables
+	if os.Getenv("KONSOLE_DBUS_SESSION") != "" || os.Getenv("KONSOLE_VERSION") != "" {
+		return true
+	}
+
+	termProgram := strings.ToLower(os.Getenv("TERM_PROGRAM"))
+	if termProgram == "konsole" {
+		return true
+	}
+
+	return false
+}
+
 // imageProtocolSupported checks if any supported image protocol terminal is detected.
 func imageProtocolSupported() bool {
-	return kittySupported() || ghosttySupported()
+	return kittySupported() || ghosttySupported() || iterm2Supported() ||
+		weztermSupported() || waystSupported() || warpSupported() || konsoleSupported()
 }
 
 func debugImageProtocol(format string, args ...interface{}) {
@@ -325,6 +401,52 @@ func kittyInlineImage(payload string) string {
 	return b.String()
 }
 
+// iterm2InlineImage renders an image using iTerm2's image protocol
+func iterm2InlineImage(payload string) string {
+	if payload == "" {
+		return ""
+	}
+
+	// Calculate rows for cursor positioning
+	rows := 1
+	if data, err := base64.StdEncoding.DecodeString(payload); err == nil {
+		if img, _, err := image.Decode(bytes.NewReader(data)); err == nil {
+			cellHeight := getTerminalCellSize()
+			h := img.Bounds().Dy()
+			rows = (h + cellHeight - 1) / cellHeight
+			if rows < 1 {
+				rows = 1
+			}
+			debugImageProtocol("image height: %d pixels, cell height: %d pixels, rows needed: %d", h, cellHeight, rows)
+		}
+	}
+
+	// iTerm2 image protocol: ESC]1337;File=inline=1:<base64_data>BEL
+	result := fmt.Sprintf("\x1b]1337;File=inline=1:%s\x07\n", payload)
+
+	// Add placeholder for row spacing
+	result += fmt.Sprintf("%s%d%s\n", imageRowPlaceholderPrefix, rows, imageRowPlaceholderSuffix)
+
+	return result
+}
+
+// renderInlineImage renders an image using the appropriate protocol for the detected terminal
+func renderInlineImage(payload string) string {
+	if payload == "" {
+		return ""
+	}
+
+	if kittySupported() || ghosttySupported() || weztermSupported() || waystSupported() || konsoleSupported() {
+		// These terminals use the Kitty graphics protocol
+		return kittyInlineImage(payload)
+	} else if iterm2Supported() || warpSupported() {
+		// iTerm2 and Warp use the iTerm2 image protocol
+		return iterm2InlineImage(payload)
+	}
+
+	return ""
+}
+
 // expandImageRowPlaceholders replaces image row placeholders with actual newlines.
 func expandImageRowPlaceholders(text string) string {
 	re := regexp.MustCompile(regexp.QuoteMeta(imageRowPlaceholderPrefix) + `(\d+)` + regexp.QuoteMeta(imageRowPlaceholderSuffix))
@@ -440,8 +562,8 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 			}
 
 			if payload != "" {
-				if rendered := kittyInlineImage(payload); rendered != "" {
-					debugImageProtocol("rendered inline image src=%s len=%d dataURI=%t cid=%t (kitty=%t ghostty=%t)", src, len(payload), strings.HasPrefix(src, "data:"), strings.HasPrefix(src, "cid:"), kittySupported(), ghosttySupported())
+				if rendered := renderInlineImage(payload); rendered != "" {
+					debugImageProtocol("rendered inline image src=%s len=%d dataURI=%t cid=%t (kitty=%t ghostty=%t iterm2=%t wezterm=%t wayst=%t warp=%t konsole=%t)", src, len(payload), strings.HasPrefix(src, "data:"), strings.HasPrefix(src, "cid:"), kittySupported(), ghosttySupported(), iterm2Supported(), weztermSupported(), waystSupported(), warpSupported(), konsoleSupported())
 					s.ReplaceWithHtml("\n" + rendered + "\n")
 					return
 				}
@@ -450,7 +572,7 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 				debugImageProtocol("no payload for src=%s dataURI=%t cid=%t", src, strings.HasPrefix(src, "data:"), strings.HasPrefix(src, "cid:"))
 			}
 		} else {
-			debugImageProtocol("image protocol not supported for src=%s (kitty=%t ghostty=%t)", src, kittySupported(), ghosttySupported())
+			debugImageProtocol("image protocol not supported for src=%s (kitty=%t ghostty=%t iterm2=%t wezterm=%t wayst=%t warp=%t konsole=%t)", src, kittySupported(), ghosttySupported(), iterm2Supported(), weztermSupported(), waystSupported(), warpSupported(), konsoleSupported())
 		}
 		if hyperlinkSupported() {
 			s.ReplaceWithHtml(hyperlink(src, fmt.Sprintf("\n [Click here to view image: %s] \n", alt)))
