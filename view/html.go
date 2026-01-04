@@ -47,7 +47,7 @@ func getTerminalCellSize() int {
 		}
 	}
 
-	debugKitty("using default cell height: %d pixels", defaultCellHeight)
+	debugImageProtocol("using default cell height: %d pixels", defaultCellHeight)
 	return defaultCellHeight
 }
 
@@ -65,14 +65,14 @@ func getCellHeightFromFd(fd int) int {
 	if ws.Row > 0 && ws.Ypixel > 0 {
 		cellHeight := int(ws.Ypixel) / int(ws.Row)
 		if cellHeight > 0 {
-			debugKitty("terminal cell height: %d pixels (rows=%d, ypixel=%d, fd=%d)", cellHeight, ws.Row, ws.Ypixel, fd)
+			debugImageProtocol("terminal cell height: %d pixels (rows=%d, ypixel=%d, fd=%d)", cellHeight, ws.Row, ws.Ypixel, fd)
 			return cellHeight
 		}
 	}
 
 	// Terminal reported dimensions but no pixel info - this is common
 	if ws.Row > 0 && ws.Ypixel == 0 {
-		debugKitty("terminal fd=%d has rows=%d but no pixel info (ypixel=0)", fd, ws.Row)
+		debugImageProtocol("terminal fd=%d has rows=%d but no pixel info (ypixel=0)", fd, ws.Row)
 	}
 
 	return 0
@@ -117,13 +117,39 @@ func kittySupported() bool {
 	return os.Getenv("KITTY_WINDOW_ID") != ""
 }
 
-func debugKitty(format string, args ...interface{}) {
-	if os.Getenv("DEBUG_KITTY_IMAGES") == "" {
+func ghosttySupported() bool {
+	// Check for TERM containing ghostty
+	term := strings.ToLower(os.Getenv("TERM"))
+	if strings.Contains(term, "ghostty") {
+		return true
+	}
+
+	// Check for Ghostty-specific environment variables
+	if os.Getenv("TERM_PROGRAM") == "ghostty" {
+		return true
+	}
+
+	// Check for GHOSTTY_RESOURCES_DIR which Ghostty sets
+	return os.Getenv("GHOSTTY_RESOURCES_DIR") != ""
+}
+
+// imageProtocolSupported checks if any supported image protocol terminal is detected.
+func imageProtocolSupported() bool {
+	return kittySupported() || ghosttySupported()
+}
+
+func debugImageProtocol(format string, args ...interface{}) {
+	if os.Getenv("DEBUG_IMAGE_PROTOCOL") == "" && os.Getenv("DEBUG_KITTY_IMAGES") == "" {
 		return
 	}
-	msg := fmt.Sprintf("[kitty-img] "+format+"\n", args...)
+	msg := fmt.Sprintf("[img-protocol] "+format+"\n", args...)
 	fmt.Print(msg)
-	if path := os.Getenv("DEBUG_KITTY_LOG"); path != "" {
+	if path := os.Getenv("DEBUG_IMAGE_PROTOCOL_LOG"); path != "" {
+		if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			_, _ = f.WriteString(msg)
+			_ = f.Close()
+		}
+	} else if path := os.Getenv("DEBUG_KITTY_LOG"); path != "" {
 		if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			_, _ = f.WriteString(msg)
 			_ = f.Close()
@@ -138,34 +164,34 @@ func fetchRemoteBase64(url string) string {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		debugKitty("remote fetch failed url=%s err=%v", url, err)
+		debugImageProtocol("remote fetch failed url=%s err=%v", url, err)
 		return ""
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		debugKitty("remote fetch non-200 url=%s status=%d", url, resp.StatusCode)
+		debugImageProtocol("remote fetch non-200 url=%s status=%d", url, resp.StatusCode)
 		return ""
 	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		debugKitty("remote fetch read error url=%s err=%v", url, err)
+		debugImageProtocol("remote fetch read error url=%s err=%v", url, err)
 		return ""
 	}
 
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		debugKitty("remote decode failed url=%s err=%v", url, err)
+		debugImageProtocol("remote decode failed url=%s err=%v", url, err)
 		return ""
 	}
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
-		debugKitty("remote png encode failed url=%s err=%v", url, err)
+		debugImageProtocol("remote png encode failed url=%s err=%v", url, err)
 		return ""
 	}
 
 	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
-	debugKitty("remote fetch ok url=%s len=%d", url, len(encoded))
+	debugImageProtocol("remote fetch ok url=%s len=%d", url, len(encoded))
 	return encoded
 }
 
@@ -204,7 +230,7 @@ func kittyInlineImage(payload string) string {
 			if rows < 1 {
 				rows = 1
 			}
-			debugKitty("image height: %d pixels, cell height: %d pixels, rows needed: %d", h, cellHeight, rows)
+			debugImageProtocol("image height: %d pixels, cell height: %d pixels, rows needed: %d", h, cellHeight, rows)
 		}
 	}
 
@@ -332,7 +358,7 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 			alt = "Does not contain alt text"
 		}
 
-		if kittySupported() {
+		if imageProtocolSupported() {
 			var payload string
 			if strings.HasPrefix(src, "data:image/") {
 				payload = dataURIBase64(src)
@@ -341,9 +367,9 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 				cid = strings.Trim(cid, "<>")
 				if inline != nil {
 					payload = inline[cid]
-					debugKitty("cid lookup for %s found=%t len=%d", cid, payload != "", len(payload))
+					debugImageProtocol("cid lookup for %s found=%t len=%d", cid, payload != "", len(payload))
 				} else {
-					debugKitty("cid lookup skipped inline map nil for %s", cid)
+					debugImageProtocol("cid lookup skipped inline map nil for %s", cid)
 				}
 			} else if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
 				payload = fetchRemoteBase64(src)
@@ -351,16 +377,16 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 
 			if payload != "" {
 				if rendered := kittyInlineImage(payload); rendered != "" {
-					debugKitty("rendered inline image src=%s len=%d dataURI=%t cid=%t", src, len(payload), strings.HasPrefix(src, "data:"), strings.HasPrefix(src, "cid:"))
+					debugImageProtocol("rendered inline image src=%s len=%d dataURI=%t cid=%t (kitty=%t ghostty=%t)", src, len(payload), strings.HasPrefix(src, "data:"), strings.HasPrefix(src, "cid:"), kittySupported(), ghosttySupported())
 					s.ReplaceWithHtml("\n" + rendered + "\n")
 					return
 				}
-				debugKitty("payload present but renderer returned empty src=%s len=%d", src, len(payload))
+				debugImageProtocol("payload present but renderer returned empty src=%s len=%d", src, len(payload))
 			} else {
-				debugKitty("no payload for src=%s dataURI=%t cid=%t", src, strings.HasPrefix(src, "data:"), strings.HasPrefix(src, "cid:"))
+				debugImageProtocol("no payload for src=%s dataURI=%t cid=%t", src, strings.HasPrefix(src, "data:"), strings.HasPrefix(src, "cid:"))
 			}
 		} else {
-			debugKitty("kitty not detected for src=%s", src)
+			debugImageProtocol("image protocol not supported for src=%s (kitty=%t ghostty=%t)", src, kittySupported(), ghosttySupported())
 		}
 
 		s.ReplaceWithHtml(hyperlink(src, fmt.Sprintf("\n [Click here to view image: %s] \n", alt)))
