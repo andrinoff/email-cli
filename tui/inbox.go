@@ -196,6 +196,7 @@ func (m *Inbox) updateList() {
 		bindings := []key.Binding{
 			key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archive")),
+			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 		}
 		if len(m.tabs) > 1 {
 			bindings = append(bindings,
@@ -300,6 +301,10 @@ func (m *Inbox) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					return ArchiveEmailMsg{UID: selectedItem.uid, AccountID: selectedItem.accountID, Mailbox: m.mailbox}
 				}
+			}
+		case "r":
+			return m, func() tea.Msg {
+				return RequestRefreshMsg{Mailbox: m.mailbox}
 			}
 		case "enter":
 			selectedItem, ok := m.list.SelectedItem().(item)

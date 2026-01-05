@@ -63,10 +63,10 @@ type mainModel struct {
 	config        *config.Config
 	emails        []fetcher.Email
 	emailsByAcct  map[string][]fetcher.Email
-	sentEmails   []fetcher.Email
-	sentByAcct   map[string][]fetcher.Email
+	sentEmails    []fetcher.Email
+	sentByAcct    map[string][]fetcher.Email
 	inbox         *tui.Inbox
-	sentInbox    *tui.Inbox
+	sentInbox     *tui.Inbox
 	width         int
 	height        int
 	err           error
@@ -261,6 +261,12 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.current.Init(),
 			func() tea.Msg { return tui.RefreshingEmailsMsg{Mailbox: tui.MailboxInbox} },
 			refreshEmails(m.config, tui.MailboxInbox),
+		)
+
+	case tui.RequestRefreshMsg:
+		return m, tea.Batch(
+			func() tea.Msg { return tui.RefreshingEmailsMsg{Mailbox: msg.Mailbox} },
+			refreshEmails(m.config, msg.Mailbox),
 		)
 
 	case tui.EmailsRefreshedMsg:
