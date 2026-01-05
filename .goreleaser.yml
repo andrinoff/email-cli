@@ -32,10 +32,6 @@ builds:
     # Linker flags to strip debug information and reduce binary size.
     ldflags:
       - -s -w -buildid= -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
-    # Post-build hooks to compress binaries with UPX (Linux only, macOS support is experimental).
-    hooks:
-      post:
-        - sh -c '[ "{{ .Os }}" = "linux" ] && upx --best --lzma "{{ .Path }}" || true'
 
 # 'archives' defines how to package the built binaries.
 # 'archives' defines how to package the built binaries.
