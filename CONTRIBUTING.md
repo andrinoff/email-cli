@@ -46,7 +46,7 @@ To get started with development, you'll need to have Go installed.
     ```
 3.  Build the project:
     ```bash
-    go build -o matcha
+    go build -trimpath -ldflags="-s -w" -o matcha
     ```
 4.  Run the application:
     ```bash

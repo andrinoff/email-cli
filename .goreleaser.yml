@@ -26,9 +26,12 @@ builds:
     # Environment variables to pass to the Go compiler.
     env:
       - CGO_ENABLED=0
+    # Build flags for smaller binaries and reproducible builds.
+    flags:
+      - -trimpath
     # Linker flags to strip debug information and reduce binary size.
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+      - -s -w -buildid= -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
 # 'archives' defines how to package the built binaries.
 # 'archives' defines how to package the built binaries.
