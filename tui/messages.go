@@ -63,7 +63,6 @@ type GoToInboxMsg struct{}
 
 type GoToSentInboxMsg struct{}
 
-
 type GoToSendMsg struct {
 	To      string
 	Subject string
@@ -254,7 +253,7 @@ type CachedEmailsLoadedMsg struct {
 }
 
 // RefreshingEmailsMsg signals that a background refresh is in progress.
-type RefreshingEmailsMsg struct{
+type RefreshingEmailsMsg struct {
 	Mailbox MailboxKind
 }
 
@@ -262,4 +261,9 @@ type RefreshingEmailsMsg struct{
 type EmailsRefreshedMsg struct {
 	EmailsByAccount map[string][]fetcher.Email
 	Mailbox         MailboxKind
+}
+
+// RequestRefreshMsg signals a request to refresh emails from the server.
+type RequestRefreshMsg struct {
+	Mailbox MailboxKind
 }
