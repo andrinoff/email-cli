@@ -98,7 +98,13 @@ Matcha is written in **Go**. To build it manually:
 4.  Build the binary:
 
     ```bash
-    go build -o matcha
+    go build -trimpath -ldflags="-s -w" -o matcha
+    ```
+
+    For an even smaller binary, compress with UPX (install via `brew install upx` or `apt install upx`):
+
+    ```bash
+    upx --best --lzma matcha
     ```
 
 5.  Run it:
