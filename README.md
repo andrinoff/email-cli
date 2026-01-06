@@ -107,8 +107,8 @@ Matcha is written in **Go**. To build it manually:
     upx --best --lzma matcha
     ```
     
-    > [!WARNING] 
-    > UPX compression does NOT work on macOS ARM builds. See [#97](https://github.com/floatpane/matcha/pull/97)
+> [!WARNING] 
+> UPX compression does NOT work on macOS ARM builds. See [#97](https://github.com/floatpane/matcha/pull/97)
   
 
 5.  Run it:
