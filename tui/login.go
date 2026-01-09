@@ -53,7 +53,7 @@ func NewLogin() *Login {
 			t.Placeholder = "Display Name"
 			t.Prompt = "👤 > "
 		case inputEmail:
-			t.Placeholder = "Host"
+			t.Placeholder = "Username"
 			t.Prompt = "🏠 > "
 		case inputFetchEmail:
 			t.Placeholder = "Email Address"
