@@ -325,6 +325,9 @@ Clickable links work in:
 
 ## Configuration
 
+> [!WARNING]
+> The passwords are stored in plain text as of right now, make sure your computer is not infected before using Matcha
+
 Configuration is stored in `~/.config/matcha/config.json`
 
 **Example configuration:**
@@ -399,7 +402,7 @@ Built with:
 
 <div align="center">
 
-**[Report Bug](https://github.com/floatpane/matcha/issues)** · **[Request Feature](https://github.com/floatpane/matcha/issues)** · **[Discussions](https://github.com/floatpane/matcha/discussions)**
+**[Report Bug](https://github.com/floatpane/matcha/issues)** · **[Request Feature](https://github.com/floatpane/matcha/issues)** · **[Contributing Guidelines](https://github.com/floatpane/matcha/blob/master/CONTRIBUTING.md)**
 
 Made with ♥ for terminal enthusiasts
 
