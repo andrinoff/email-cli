@@ -58,13 +58,10 @@ checksum:
 
 # 'changelog' configures the automatic generation of release notes.
 changelog:
-  sort: asc
-  filters:
-    # Exclude commit messages that match these patterns from the changelog.
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "Merge branch"
+  # Use 'github-native' to leverage GitHub's release notes API.
+  # This automatically includes contributors and links to PRs/issues.
+  # Categories are configured in .github/release.yml
+  use: github-native
 
 # 'release' configures the GitHub Release creation.
 release:
