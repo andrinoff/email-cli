@@ -237,6 +237,7 @@ type Draft struct {
 	AccountID      string    `json:"account_id"`
 	InReplyTo      string    `json:"in_reply_to,omitempty"`
 	References     []string  `json:"references,omitempty"`
+	QuotedText     string    `json:"quoted_text,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

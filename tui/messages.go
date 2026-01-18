@@ -27,6 +27,7 @@ type SendEmailMsg struct {
 	InReplyTo      string
 	References     []string
 	AccountID      string // ID of the account to send from
+	QuotedText     string // Hidden quoted text appended when sending
 }
 
 type Credentials struct {

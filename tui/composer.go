@@ -69,6 +69,9 @@ type Composer struct {
 	// Reply context
 	inReplyTo  string
 	references []string
+
+	// Hidden quoted text (appended to body when sending, but not shown in editor)
+	quotedText string
 }
 
 // NewComposer initializes a new composer model.
@@ -303,6 +306,9 @@ func (m *Composer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						Body:           m.bodyInput.Value(),
 						AttachmentPath: m.attachmentPath,
 						AccountID:      accountID,
+						QuotedText:     m.quotedText,
+						InReplyTo:      m.inReplyTo,
+						References:     m.references,
 					}
 				}
 			}
@@ -502,6 +508,16 @@ func (m *Composer) SetReplyContext(inReplyTo string, references []string) {
 	m.references = references
 }
 
+// SetQuotedText sets the hidden quoted text that will be appended when sending.
+func (m *Composer) SetQuotedText(text string) {
+	m.quotedText = text
+}
+
+// GetQuotedText returns the hidden quoted text.
+func (m *Composer) GetQuotedText() string {
+	return m.quotedText
+}
+
 // GetInReplyTo returns the In-Reply-To header value.
 func (m *Composer) GetInReplyTo() string {
 	return m.inReplyTo
@@ -523,6 +539,7 @@ func (m *Composer) ToDraft() config.Draft {
 		AccountID:      m.GetSelectedAccountID(),
 		InReplyTo:      m.inReplyTo,
 		References:     m.references,
+		QuotedText:     m.quotedText,
 	}
 }
 
@@ -533,5 +550,6 @@ func NewComposerFromDraft(draft config.Draft, accounts []config.Account) *Compos
 	m.attachmentPath = draft.AttachmentPath
 	m.inReplyTo = draft.InReplyTo
 	m.references = draft.References
+	m.quotedText = draft.QuotedText
 	return m
 }

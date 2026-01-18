@@ -496,19 +496,27 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tui.ReplyToEmailMsg:
 		to := msg.Email.From
 		subject := "Re: " + msg.Email.Subject
-		body := fmt.Sprintf("\n\nOn %s, %s wrote:\n> %s", msg.Email.Date.Format("Jan 2, 2006 at 3:04 PM"), msg.Email.From, strings.ReplaceAll(msg.Email.Body, "\n", "\n> "))
+		quotedText := fmt.Sprintf("\n\nOn %s, %s wrote:\n> %s", msg.Email.Date.Format("Jan 2, 2006 at 3:04 PM"), msg.Email.From, strings.ReplaceAll(msg.Email.Body, "\n", "\n> "))
 
+		var composer *tui.Composer
 		if m.config != nil && len(m.config.Accounts) > 0 {
 			// Use the account that received the email
 			accountID := msg.Email.AccountID
 			if accountID == "" {
 				accountID = m.config.GetFirstAccount().ID
 			}
-			composer := tui.NewComposerWithAccounts(m.config.Accounts, accountID, to, subject, body)
-			m.current = composer
+			composer = tui.NewComposerWithAccounts(m.config.Accounts, accountID, to, subject, "")
 		} else {
-			m.current = tui.NewComposer("", to, subject, body)
+			composer = tui.NewComposer("", to, subject, "")
 		}
+		composer.SetQuotedText(quotedText)
+
+		// Set reply headers
+		inReplyTo := msg.Email.MessageID
+		references := append(msg.Email.References, msg.Email.MessageID)
+		composer.SetReplyContext(inReplyTo, references)
+
+		m.current = composer
 		m.current, _ = m.current.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 		return m, m.current.Init()
 
@@ -1024,6 +1032,10 @@ func sendEmail(account *config.Account, msg tui.SendEmailMsg) tea.Cmd {
 
 		recipients := []string{msg.To}
 		body := msg.Body
+		// Append quoted text if present (for replies)
+		if msg.QuotedText != "" {
+			body = body + msg.QuotedText
+		}
 		images := make(map[string][]byte)
 		attachments := make(map[string][]byte)
 
