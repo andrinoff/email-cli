@@ -495,7 +495,11 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tui.ReplyToEmailMsg:
 		to := msg.Email.From
-		subject := "Re: " + msg.Email.Subject
+		subject := msg.Email.Subject
+		normalizedSubject := strings.ToLower(strings.TrimSpace(subject))
+		if !strings.HasPrefix(normalizedSubject, "re:") {
+			subject = "Re: " + subject
+		}
 		quotedText := fmt.Sprintf("\n\nOn %s, %s wrote:\n> %s", msg.Email.Date.Format("Jan 2, 2006 at 3:04 PM"), msg.Email.From, strings.ReplaceAll(msg.Email.Body, "\n", "\n> "))
 
 		var composer *tui.Composer
