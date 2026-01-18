@@ -86,8 +86,6 @@ changelog:
   filters:
     # Exclude commit messages that match these patterns from the changelog.
     exclude:
-      - "^feat:"
-      - "^fix:"
       - "^docs:"
       - "^test:"
       - "^chore:"
