@@ -205,17 +205,28 @@ func FetchMailboxEmails(account *config.Account, mailbox string, limit, offset u
 			fetchEmail = strings.ToLower(strings.TrimSpace(account.Email))
 		}
 
-		// Check if any recipient matches the fetchEmail
+		// Determine if this is a sent mailbox
+		isSentMailbox := mailbox == getSentMailbox(account)
+
+		// Apply different filtering logic based on mailbox type
 		matched := false
-		for _, r := range toAddrList {
-			if strings.EqualFold(strings.TrimSpace(r), fetchEmail) {
+		if isSentMailbox {
+			// For sent mailbox, check if the sender matches the fetchEmail
+			if strings.EqualFold(strings.TrimSpace(fromAddr), fetchEmail) {
 				matched = true
-				break
+			}
+		} else {
+			// For inbox and other mailboxes, check if any recipient matches the fetchEmail
+			for _, r := range toAddrList {
+				if strings.EqualFold(strings.TrimSpace(r), fetchEmail) {
+					matched = true
+					break
+				}
 			}
 		}
 
 		if !matched {
-			// Skip messages not addressed to the configured fetch email
+			// Skip messages not matching the filter criteria
 			continue
 		}
 
