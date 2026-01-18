@@ -70,6 +70,10 @@ release:
   draft: false
   # If set to true, will mark the release as a pre-release.
   prerelease: auto
+  # Add a footer to the release notes featuring full changelog.
+  footer: |
+    ---
+    **Full Changelog**: https://github.com/floatpane/matcha/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 # 'brews' configures the Homebrew tap integration.
 brews:
