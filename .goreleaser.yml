@@ -58,41 +58,10 @@ checksum:
 
 # 'changelog' configures the automatic generation of release notes.
 changelog:
-  # Use 'github' to fetch additional metadata like PR authors and linked issues.
-  use: github
-  sort: asc
-  # Group commits by category based on conventional commit prefixes.
-  groups:
-    - title: "New Features"
-      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
-      order: 0
-    - title: "Bug Fixes"
-      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
-      order: 1
-    - title: "Performance Improvements"
-      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
-      order: 2
-    - title: "Refactoring"
-      regexp: '^.*?refactor(\([[:word:]]+\))??!?:.+$'
-      order: 3
-    - title: "Build & CI"
-      regexp: '^.*?(build|ci)(\([[:word:]]+\))??!?:.+$'
-      order: 4
-    - title: "Dependencies"
-      regexp: '^.*?chore\(deps\).*$'
-      order: 5
-    - title: "Other Changes"
-      order: 999
-  filters:
-    # Exclude commit messages that match these patterns from the changelog.
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - "Merge branch"
-      - "Merge pull request"
-  # Include contributor info and abbreviate commit hashes.
-  abbrev: 7
+  # Use 'github-native' to leverage GitHub's release notes API.
+  # This automatically includes contributors and links to PRs/issues.
+  # Categories are configured in .github/release.yml
+  use: github-native
 
 # 'release' configures the GitHub Release creation.
 release:
@@ -101,18 +70,9 @@ release:
   draft: false
   # If set to true, will mark the release as a pre-release.
   prerelease: auto
-  # Add a footer to the release notes featuring contributors.
+  # Add a footer to the release notes featuring full changelog.
   footer: |
     ---
-
-    ## Contributors
-
-    Thanks to all the contributors who made this release possible!
-
-    {{ range .Contributors }}
-    - @{{ .Name }}
-    {{- end }}
-
     **Full Changelog**: https://github.com/floatpane/matcha/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 # 'brews' configures the Homebrew tap integration.
