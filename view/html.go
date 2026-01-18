@@ -526,6 +526,44 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 		s.ReplaceWithHtml("\n")
 	})
 
+	// Handle blockquote elements (quoted replies)
+	// We collect quote data and use placeholders, then render after doc.Text()
+	var quoteData []struct {
+		from, date string
+		content    string
+	}
+	doc.Find("blockquote").Each(func(i int, s *goquery.Selection) {
+		// Try to extract sender info from cite attribute or preceding text
+		cite, _ := s.Attr("cite")
+		quoteText := strings.TrimSpace(s.Text())
+
+		// Look for "On DATE, EMAIL wrote:" pattern in previous sibling or cite
+		var from, date string
+		prevText := ""
+		if prev := s.Prev(); prev.Length() > 0 {
+			prevText = strings.TrimSpace(prev.Text())
+		}
+
+		onWroteRegex := regexp.MustCompile(`On\s+(.+?),\s+(.+?)\s+wrote:`)
+		if matches := onWroteRegex.FindStringSubmatch(prevText); matches != nil {
+			date = parseDateForDisplay(matches[1])
+			from = matches[2]
+			// Remove the "On ... wrote:" from the previous element
+			s.Prev().Remove()
+		} else if matches := onWroteRegex.FindStringSubmatch(cite); matches != nil {
+			date = parseDateForDisplay(matches[1])
+			from = matches[2]
+		}
+
+		// Store quote data and use placeholder
+		quoteData = append(quoteData, struct {
+			from, date string
+			content    string
+		}{from, date, quoteText})
+		placeholder := fmt.Sprintf("\n[[MATCHA_QUOTE:%d]]\n", len(quoteData)-1)
+		s.ReplaceWithHtml(placeholder)
+	})
+
 	// Format links and images
 	doc.Find("a").Each(func(i int, s *goquery.Selection) {
 		href, exists := s.Attr("href")
@@ -591,5 +629,164 @@ func processBody(rawBody string, inline map[string]string, h1Style, h2Style, bod
 	// Now expand the image row placeholders to actual newlines
 	text = expandImageRowPlaceholders(text)
 
+	// Replace quote placeholders with styled quote boxes
+	quoteRegex := regexp.MustCompile(`\[\[MATCHA_QUOTE:(\d+)\]\]`)
+	text = quoteRegex.ReplaceAllStringFunc(text, func(match string) string {
+		idxStr := quoteRegex.FindStringSubmatch(match)[1]
+		var idx int
+		fmt.Sscanf(idxStr, "%d", &idx)
+		if idx >= 0 && idx < len(quoteData) {
+			q := quoteData[idx]
+			return renderQuoteBox(q.from, q.date, strings.Split(q.content, "\n"))
+		}
+		return match
+	})
+
+	// Style quoted reply sections (for plain text > quotes)
+	text = styleQuotedReplies(text)
+
 	return bodyStyle.Render(text), nil
+}
+
+// quoteBoxStyle is the style for the quoted reply box border
+var quoteBoxStyle = lipgloss.NewStyle().
+	Border(lipgloss.RoundedBorder()).
+	BorderForeground(lipgloss.Color("240")).
+	Padding(0, 1).
+	Foreground(lipgloss.Color("240"))
+
+// quoteHeaderStyle is the style for the header line in the quote box
+var quoteHeaderStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("240"))
+
+// styleQuotedReplies detects quoted reply sections and styles them in a box
+func styleQuotedReplies(text string) string {
+	lines := strings.Split(text, "\n")
+	var result []string
+	var quoteBlock []string
+	var quoteFrom, quoteDate string
+	inQuote := false
+
+	// Regex to match "On DATE, EMAIL wrote:" pattern
+	// Matches various date formats
+	onWroteRegex := regexp.MustCompile(`^On\s+(.+?),\s+(.+?)\s+wrote:$`)
+
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		trimmedLine := strings.TrimSpace(line)
+
+		// Check for "On DATE, EMAIL wrote:" header
+		if matches := onWroteRegex.FindStringSubmatch(trimmedLine); matches != nil {
+			// If we were already in a quote block, render it first
+			if inQuote && len(quoteBlock) > 0 {
+				result = append(result, renderQuoteBox(quoteFrom, quoteDate, quoteBlock))
+				quoteBlock = nil
+			}
+
+			// Parse the date and email from the match
+			dateStr := matches[1]
+			quoteFrom = matches[2]
+			quoteDate = parseDateForDisplay(dateStr)
+			inQuote = true
+			continue
+		}
+
+		// Check if line starts with ">" (quoted text)
+		if strings.HasPrefix(trimmedLine, ">") {
+			if !inQuote {
+				// Start a new quote block without header info
+				inQuote = true
+				quoteFrom = ""
+				quoteDate = ""
+			}
+			// Remove the leading "> " and add to quote block
+			quotedContent := strings.TrimPrefix(trimmedLine, ">")
+			quotedContent = strings.TrimPrefix(quotedContent, " ")
+			quoteBlock = append(quoteBlock, quotedContent)
+		} else if inQuote {
+			// End of quote block - check if it's just whitespace
+			if trimmedLine == "" && i+1 < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[i+1]), ">") {
+				// Empty line within quote block, keep it
+				quoteBlock = append(quoteBlock, "")
+			} else if trimmedLine == "" && len(quoteBlock) == 0 {
+				// Empty line before any quoted content, skip
+				continue
+			} else {
+				// End of quote block
+				if len(quoteBlock) > 0 {
+					result = append(result, renderQuoteBox(quoteFrom, quoteDate, quoteBlock))
+					quoteBlock = nil
+				}
+				inQuote = false
+				quoteFrom = ""
+				quoteDate = ""
+				result = append(result, line)
+			}
+		} else {
+			result = append(result, line)
+		}
+	}
+
+	// Handle any remaining quote block
+	if inQuote && len(quoteBlock) > 0 {
+		result = append(result, renderQuoteBox(quoteFrom, quoteDate, quoteBlock))
+	}
+
+	return strings.Join(result, "\n")
+}
+
+// parseDateForDisplay converts various date formats to DD:MM:YY HH:MM
+func parseDateForDisplay(dateStr string) string {
+	// Common date formats to try
+	formats := []string{
+		"Jan 2, 2006 at 3:04 PM",
+		"02:01:06 15:04",
+		"2006-01-02 15:04:05",
+		"Mon, 02 Jan 2006 15:04:05 -0700",
+		"Mon, 2 Jan 2006 15:04:05 -0700",
+		"2 Jan 2006 15:04:05",
+		"January 2, 2006 at 3:04 PM",
+		"Jan 2, 2006 3:04 PM",
+		time.RFC1123Z,
+		time.RFC1123,
+		time.RFC822Z,
+		time.RFC822,
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, dateStr); err == nil {
+			return t.Format("02:01:06 15:04")
+		}
+	}
+
+	// Return original if parsing fails
+	return dateStr
+}
+
+// renderQuoteBox renders a quoted section in a styled box
+func renderQuoteBox(from, date string, lines []string) string {
+	// Build header with email on left and date on right
+	var header string
+	if from != "" || date != "" {
+		if from != "" && date != "" {
+			header = quoteHeaderStyle.Render(from + "  " + date)
+		} else if from != "" {
+			header = quoteHeaderStyle.Render(from)
+		} else {
+			header = quoteHeaderStyle.Render(date)
+		}
+	}
+
+	// Join the quoted content
+	content := strings.Join(lines, "\n")
+
+	// Build the box content
+	var boxContent string
+	if header != "" {
+		boxContent = header + "\n\n" + content
+	} else {
+		boxContent = content
+	}
+
+	return quoteBoxStyle.Render(boxContent)
 }
