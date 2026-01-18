@@ -176,10 +176,13 @@ There are several ways to install Matcha:
 
 ```bash
 brew tap floatpane/matcha
-brew install matcha
+brew install floatpane/matcha/matcha
 ```
 
 After installation, run:
+
+> [!WARNING]
+> If you have the [*"other"* Matcha](https://github.com/piqoni/matcha) already installed, you will have to rename the executable
 
 ```bash
 matcha
